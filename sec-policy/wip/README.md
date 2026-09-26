@@ -13,7 +13,10 @@ The packet labelling was already live, and the SELinux side is now started.
 | packet types (`ssh_client_packet_t`, ...) | exist - the `base` module declares 471 of them |
 | `mosh_packet_t` + labelling of 60001/60002 | **live** - `../selinux-desktop-system/files/desktop.system.network.te`, loaded, and deployed to the ruleset |
 | `staff_t -> mosh_packet_t { send recv }` | implemented, same module |
-| `stremio_server_t -> ssh_client_packet_t { send recv }` | implemented, same module |
+| `stremio_server_t -> ssh_client_packet_t { send recv }` | live |
+| `nginx_t -> http_server_packet_t` (serves :80) | **live** - under enforcement nginx would otherwise stop answering the web UI |
+| `nginx_t -> http_client_packet_t` + `8080 : "http_client"` | live - the local gate hop |
+| `mdns_packet_t` + 5353 labelled, allows for staff_t/stremio_server_t/staff_bubblewrap_t | **live** |
 | per-tier `*_net_t` domains | **not used** - the packet-label approach below made them unnecessary; the stub they lived in was promoted into the network module and they were dropped |
 
 ## The decision
@@ -40,6 +43,29 @@ ruleset bug rather than an ordering mistake:
     # 2. then the ruleset
     sudo nft -f ../selinux-desktop-system/files/ruleset.nftables
     sudo rc-service nftables save
+
+## Known residual
+
+`nginx_t -> unlabeled_t` on 127.0.0.1:33278 <-> 127.0.0.1:8080 continues at a
+low rate (~12/min). It is the *legacy* connection: the output chain labels
+`ct state new` flows only, and that conntrack entry predates the 8080 mapping,
+so it carries no secmark. New connections are labelled correctly (verified with
+a local request to the gate, which produced no new denial).
+
+It clears when the connection recycles. It was deliberately **not** forced with
+a conntrack flush: that would reset the TCP session carrying the agent's own
+web UI.
+
+## Safety notes
+
+- The ruleset is labelling-only: every chain is `policy accept` and there are
+  no `drop`/`reject` rules, so loading it cannot block traffic. Its one sharp
+  edge is `flush ruleset`, which clears *all* tables - check `nft list tables`
+  first, and run `nft -c` before `nft -f`.
+- Loading a secmark whose type the running policy does not define fails with
+  "Invalid argument", so the module must be loaded before the ruleset.
+- SELinux stays permissive. Enforcement is the only way a policy mistake locks
+  the box out, so it is a deliberate, separate step.
 
 ## Still to do
 
