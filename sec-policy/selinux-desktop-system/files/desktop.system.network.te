@@ -4,7 +4,11 @@ gen_require(`
 	attribute packet_type;
 	type staff_t;
 	type stremio_server_t;
+	type nginx_t;
+	type staff_bubblewrap_t;
 	type ssh_client_packet_t;
+	type http_client_packet_t;
+	type http_server_packet_t;
 	class packet { recv send };
 ')
 
@@ -14,23 +18,56 @@ gen_require(`
 #
 # That ruleset gives every packet a SELinux secmark (a *_packet_t type) from
 # its protocol, port and direction, and the kernel then checks send/recv
-# against it. Its secmapping_out map only labelled 22, 53, 80 and 443, so
-# mosh's UDP 60001/60002 arrived as unlabeled_t: captures/ carries 53 send and
-# 16 recv denials against unlabeled_t for staff_t. Rather than grant staff_t
-# blanket access to unlabelled traffic, declare a packet type and label the
-# ports, so the ports stay covered by a secmark.
+# against it. Anything the maps do not cover arrives as unlabeled_t.
+#
+# Every rule here comes from a capture in captures/. Where no packet type
+# exists, one is declared rather than granting a blanket unlabeled exception,
+# so the secmark keeps covering the traffic.
 #
 
+###
+### mosh - UDP 60001/60002
+###
 # refpolicy has no mosh_packet_t. packet_type is the attribute that makes a
 # type usable as a secmark - cf. corenet_client_packet()/corenet_server_packet().
 type mosh_packet_t;
 typeattribute mosh_packet_t packet_type;
 
 # mosh is symmetric: the outbound map labels the packets and conntrack carries
-# the secmark back onto the replies (ct state established,related in the
-# ruleset), so one mapping covers both directions.
+# the secmark back onto the replies, so one mapping covers both directions.
 allow staff_t mosh_packet_t:packet { send recv };
 
+###
+### nginx - serves :80, and connects out to the local gate on :8080
+###
+# Serving HTTP is already labelled http_server by the ruleset's secmapping_in,
+# but nothing allowed nginx_t to send or receive it - 30 send + 30 recv denials.
+allow nginx_t http_server_packet_t:packet { send recv };
+
+# The :8080 hop to the gate was unmapped, so it arrived as unlabeled_t (35 + 35
+# denials). It is mapped to http_client now, and allowed here.
+allow nginx_t http_client_packet_t:packet { send recv };
+
+###
+### mDNS - UDP 5353
+###
+# No mdns_packet_t exists in refpolicy either, and the ruleset did not label
+# 5353, so multicast discovery arrived as unlabeled_t for staff_bubblewrap_t.
+type mdns_packet_t;
+typeattribute mdns_packet_t packet_type;
+
+allow staff_bubblewrap_t mdns_packet_t:packet { send recv };
+
+# Labelling 5353 showed that mDNS is not only the sandbox: staff_t and
+# stremio_server_t were doing it too, and the label turned their previous
+# unlabeled_t denials into mdns_packet_t ones. Allow the domains the captures
+# actually show rather than leaving them denied.
+allow staff_t mdns_packet_t:packet { send recv };
+allow stremio_server_t mdns_packet_t:packet { send recv };
+
+###
+### stremio
+###
 # Stremio connects outward to :22, which secmapping_out labels ssh_client, so
 # its traffic is checked against ssh_client_packet_t. Masked today only because
 # stremio_server_t sits in a permissive domain.

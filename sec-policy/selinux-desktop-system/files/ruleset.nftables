@@ -33,6 +33,10 @@ table inet filter {
 		"system_u:object_r:mosh_packet_t:s0"
 	}
 
+	secmark mdns {
+		"system_u:object_r:mdns_packet_t:s0"
+	}
+
 	map secmapping_in {
 		type inet_service : secmark
 			elements = {\
@@ -40,6 +44,7 @@ table inet filter {
 				53 : "dns_client",\
 				80 : "http_server",\
 				443 : "http_server",\
+				5353 : "mdns",\
 			}
 	}
 
@@ -52,6 +57,8 @@ table inet filter {
 				443 : "http_client",\
 			60001 : "mosh_server",\
 			60002 : "mosh_server",\
+			8080 : "http_client",\
+			5353 : "mdns",\
 			}
 	}
 
