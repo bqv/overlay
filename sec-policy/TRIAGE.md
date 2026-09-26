@@ -94,6 +94,41 @@ to nftables, so it is recorded rather than done.
 | `staff_t -> xdg_config_t:file { execute }` (`rc-service`) | an openrc user service cannot start | identify the script, then grant |
 | `staff_gkeyringd_t -> portage_tmp_t:file` (`gnome-keyring-d`), `staff_bubblewrap_t -> user_tmp_t:file` (`steamwebhelper`), `mozilla_t -> cgroup_t:file` | keyring / Steam / the browser lose that access | triage individually - they look like stray reads rather than missing classes |
 
+## UBAC is active, and the `-ubac` flag does not turn it off
+
+The `setsebool` block was a UBAC constraint, and `refpolicy/policy/constraints`
+wraps those in `ifdef(enable_ubac)`, which comes from `build.conf`'s `UBAC = y`.
+So UBAC is on in the running policy. But `/etc/portage/package.use/selinux-base`
+sets `sec-policy/selinux-base -ubac`, and neither installed sec-policy package
+records `ubac` in its USE at all.
+
+The flag is on the wrong package. `sec-policy/selinux-base` is the one with a
+`ubac` USE flag (it rewrites `build.conf`), but the package that actually
+*compiles the base policy* is `sec-policy/selinux-base-policy`, which has no such
+flag - so it always builds with refpolicy's default `UBAC = y`. Consequence:
+UBAC is in force whatever that flag says, which is why the constraint had to be
+satisfied rather than configured away. Turning it off needs a build patch, not a
+USE flag.
+
+This matters for triage beyond that one denial: under UBAC the **SELinux user**
+component of a label is checked (`u1 == u2`), not just the type.
+
+## The overlay's labels are inconsistent
+
+A census of `/var/db/repos/local`:
+
+    1475  system_u:object_r:portage_ebuild_t
+     101  staff_u:object_r:portage_ebuild_t
+       1  staff_u:object_r:user_home_t
+       1  root:object_r:etc_runtime_t
+
+Everything should be `system_u:object_r:portage_ebuild_t` (matchpathcon agrees).
+The `etc_runtime_t` one is a policy source file that a denied `staff_git_t` could
+not even stat, and under active UBAC the mixed SELinux users are checked too.
+`restorecon -R` would normalise all of it - **not done**: it rewrites the user
+component of the very files this workflow edits, so it needs the operator's
+decision rather than mine.
+
 ## Tooling note
 
 The require-checker that scans for types referenced but not required now also
