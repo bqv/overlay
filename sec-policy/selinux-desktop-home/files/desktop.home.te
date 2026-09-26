@@ -138,6 +138,31 @@ allow staff_t xserver_tmpfs_t:file write; # ckb-next
 #corenet_udp_bind_howl_port(staff_t) # MainThread?
 dev_read_generic_files(staff_t) # ckb-next
 files_read_var_lib_symlinks(staff_t) # rofi
+
+# htop and nvtop walk every process's /proc/<pid> directory, and each of those
+# directories carries that process's domain label. Without this a user domain
+# cannot list all processes, and enforcing would leave htop showing a partial
+# process list - one capture has 2979 kernel_t:dir denials from it plus ~2000
+# more spread across other domains, making it the single largest real denial
+# source on the box. This is the interface for exactly that.
+domain_read_all_domains_state(staff_t)
+
+# nvtop does the same walk, but it also follows /proc/<pid>/fd to the sockets
+# they point at and getattrs those, which are owned by the process's domain.
+# refpolicy blesses the dir/file/lnk_file part above but has no interface for
+# the socket classes (domain_getattr_all_domains only covers process), so name
+# them. getattr is read-only metadata: it cannot connect, send or receive.
+allow staff_t domain:{ tcp_socket udp_socket unix_stream_socket unix_dgram_socket } getattr;
+allow staff_t domain:{ netlink_route_socket netlink_kobject_uevent_socket netlink_selinux_socket netlink_generic_socket } getattr;
+allow staff_t self:anon_inode getattr;
+# nvtop also stats io_uring fds, and the kernel reports that denial against
+# class io_uring (not anon_inode). It CANNOT be granted here: checkmodule's
+# class table has io_uring:getattr, but the policy's does not, so declaring the
+# class and allowing it makes semodule fail with
+#   Failed to resolve permission getattr (desktop.home/cil)
+# That is a kernel-vs-policy class table mismatch, not a policy bug. Left
+# denied: nvtop cannot stat io_uring fds under enforcing. Revisit after a
+# libsepol/base-policy rebuild.
 #files_rw_runtime_dirs(staff_t) # openrc-user
 #fs_create_cgroup_dirs(staff_t) # openrc-user
 #fs_mount_fusefs(staff_t) # fusermount3?
@@ -179,7 +204,13 @@ allow staff_t ntpd_initrc_exec_t:file getattr;
 allow staff_t postgresql_initrc_exec_t:file getattr;
 allow staff_t self:capability { audit_write dac_override dac_read_search net_admin setuid sys_ptrace };
 allow staff_t self:process setexec;
-allow staff_t shadow_t:file { getattr open read };
+# allow staff_t shadow_t:file { getattr open read };  # IMPOSSIBLE: the base
+#   policy carries 'neverallow authlogin_typeattr_1 shadow_t:file read' and
+#   staff_t is in that attribute - user domains may not read /etc/shadow in
+#   refpolicy. With this line the module cannot be linked, so the home package
+#   could never be installed; the loaded module has no shadow_t rule at all.
+#   Password checks go through PAM/chkpwd_t. See auth_can_read_shadow_passwords()
+#   if a domain genuinely needs it.
 allow staff_t sysadm_t:key create;
 allow staff_t sysadm_t:process { noatsecure rlimitinh siginh transition };
 allow staff_t systemd_sessions_runtime_t:fifo_file write;

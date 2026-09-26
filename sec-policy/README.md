@@ -4,6 +4,29 @@ Hand-written, application-scoped MCS policy for a `staff_u` desktop, layered on
 refpolicy 2.20250213 through the `selinux-policy-2` eclass. Built as real
 packages in the `local` overlay, not as hand-installed `.pp` files.
 
+## Target: enforcing
+
+The end state of this policy is SELinux in **enforcing** mode on this box, so
+every AVC is a work item rather than noise. The rules used to triage one:
+
+- **legitimate access** -> grant it, using the refpolicy interface if one exists
+  (`domain_read_all_domains_state`, `kernel_getattr_proc`, ...) and a raw allow
+  otherwise;
+- **genuinely unwanted** -> leave it denied, and write down what will then fail;
+- **dontaudit** only where the denial causes no functional failure - it hides a
+  problem rather than fixing it, so it is never used to make a real failure
+  quiet.
+
+Enforcement is not switched on until no unhandled denial remains. It is the one
+change that can lock the operator out, so it is an explicit, separate step.
+
+Captures go stale the moment a module is merged: always re-capture and re-triage
+after a reload, with `sudo ./aud "10 minutes ago" <name>`.
+
+A denial inventory is worth little until self-inflicted noise is removed from
+it - commands like `grep`/`python3` walking `/var/db/pkg` produced 61% of the
+AVCs in one capture, and attributing by `comm=` is what makes the rest visible.
+
 ## Packages
 
 | package | modules |
