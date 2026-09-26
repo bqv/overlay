@@ -204,6 +204,17 @@ can_exec(sysadm_t, portage_ebuild_t)
 # the user's git wrapper reads and searches it, and a tmux session with a cwd
 # there searches it. refpolicy only expects portage tools in that tree.
 portage_read_ebuild(staff_git_t)
+# staff_git_t is refpolicy's per-role git domain (declared inside an optional
+# block in the staff module). It gets git's own access - git_exec_t, git_home_t -
+# but nothing for the user's ~/bin, so git cannot work in a repo there, and
+# staff_git_t is still in the permissive list. Reproduced with a read-only
+# `git status` in ~/bin/<repo>: ~40 denials against user_bin_t plus /dev/ptmx.
+userdom_manage_user_bin(staff_git_t)
+# git mmaps its index, and no interface grants map on user_bin_t specifically
+# (userdom_map_user_home_content_files covers user_home_t only, and the map_all
+# variant would grant map on every home content type). One precise allow.
+allow staff_git_t user_bin_t:file map;
+term_use_ptmx(staff_git_t)
 # The overlay itself lives under /var/db/repos, so *reading* it as the session
 # user (editing policy files, inspecting ebuilds) needs this too - without it the
 # policy cannot be maintained as staff_t under enforcing.

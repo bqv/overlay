@@ -67,6 +67,28 @@ Decide each pattern by what it does under enforcing:
 
 | pattern | decision |
 |---|---|
+| `staff_git_t -> user_bin_t` (~40 denials per git run) and `ptmx_t:chr_file` | **fixed** - verified: a real `git status` in `~/bin/<repo>` now produces **0** denials, down from ~40. Mechanism: `userdom_manage_user_bin(staff_git_t)` + `term_use_ptmx(staff_git_t)`, plus one precise `allow staff_git_t user_bin_t:file map;` because git mmaps its index and no interface grants `map` on `user_bin_t` (`userdom_map_user_home_content_files` covers `user_home_t` only; the `map_all` variant would grant it on every home content type) |
+
+### A class worth knowing: per-role application domains get no home access
+
+`staff_git_t` was not a one-off. refpolicy's `staff` module declares per-role
+application domains inside optional blocks, and they receive the *application's*
+own access (`git_exec_t`, `git_home_t`, ...) but nothing for the user's home.
+Of the 16 `staff_*_t` types, these have **zero** home/bin rules:
+
+    staff_cockpit_tmpfs_t   (a tmpfs file type, not a domain)
+    staff_dbusd_tmpfs_t     (likewise)
+    staff_feedbackd_t
+    staff_git_t             <- fixed this round
+    staff_gkeyringd_t       <- implicated: `staff_gkeyringd_t -> portage_tmp_t`
+    staff_userhelper_t
+
+So under enforcing, any app that *transitions* into a per-role domain loses the
+user's files. `staff_git_t` was simply the one that got exercised. The other
+three process domains are worth the same treatment as they turn up.
+
+| pattern | decision |
+|---|---|
 | `mozilla_t -> cgroup_t:file { getattr read open }` on `/sys/fs/cgroup/*/cpu.max` | granted: `fs_read_cgroup_files(mozilla_t)` - the browser reads its own cgroup |
 | `staff_t -> portage_ebuild_t:file { read open }` | granted: `portage_read_ebuild(staff_t)`. The overlay lives under `/var/db/repos`, so *reading* the policy source as the session user is denied otherwise - without this the policy could not be maintained as staff_t under enforcing |
 | `mozilla_t -> portage_tmp_t:file` on `/usr/lib/locale/locale-archive` | **not a policy problem**: the file was mislabelled `portage_tmp_t` (a glibc rebuild's leftover). `matchpathcon` says `locale_t`, and `restorecon` fixed it. Worth remembering that a denial can be the *label* being wrong rather than the policy being incomplete |
