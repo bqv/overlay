@@ -25,6 +25,7 @@ gen_require(`
   type shutdown_t;
   type shutdown_exec_t;
   type file_context_t;
+  type tracefs_t;
   type load_policy_t;
   type ldconfig_t;
   type portage_sandbox_t;
@@ -166,6 +167,23 @@ allow utempter_t staff_t:udp_socket { read write };
 
 # sesh: the session helper talks to the user's session sockets.
 allow sysadm_t staff_t:unix_stream_socket { read write };
+
+# --- so the policy can be maintained under enforcing ---
+#
+# `make -C <pkg> merge` runs setsebool -P in pkg_postinst, and the audit shows
+# semanage_t denied relabelto across the whole policy store - the ebuild's own
+# post-install step cannot complete with enforcing on. These are refpolicy's
+# interfaces for exactly that, plus the two file types they do not cover.
+seutil_manage_module_store(semanage_t)
+seutil_relabelto_bin_policy(semanage_t)
+allow semanage_t file_context_t:file relabelto;
+allow semanage_t selinux_config_t:file relabelto;
+allow semanage_t tracefs_t:filesystem getattr;
+
+# Running an ebuild as the admin: `make compile/merge` executes the .ebuild
+# file, so sysadm_t needs to read and execute portage_ebuild_t.
+portage_read_ebuild(sysadm_t)
+can_exec(sysadm_t, portage_ebuild_t)
 allow utempter_t sysadm_t:udp_socket { read write };
 term_use_ptmx(utempter_t)
 

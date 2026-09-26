@@ -163,6 +163,8 @@ fs_remount_all_fs(staff_bubblewrap_t)
 # ...and it needs the controlling pty, plus xdg data links and to read its own
 # udp socket.
 term_use_ptmx(staff_bubblewrap_t)
+# /proc/pressure: the sandbox reads pressure-stall info.
+kernel_read_psi(staff_bubblewrap_t)
 allow staff_bubblewrap_t xdg_data_t:lnk_file read;
 allow staff_bubblewrap_t self:udp_socket read;
 
