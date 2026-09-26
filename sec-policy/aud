@@ -1,0 +1,48 @@
+#!/bin/bash
+# aud - capture AVCs from a point in time, and draft a policy module from them.
+#
+#   aud <since> <name> [extra ausearch args...]
+#
+#     <since>  anything `date --date=` accepts: "14:20", "-1h", "2025-09-02 14:00"
+#     <name>   capture name; files land in captures/<date>-<name>.{audit,te}
+#
+# Run as root: ausearch needs to read the audit logs.
+#
+# Raw evidence goes to captures/<date>-<name>.audit, the audit2allow draft to
+# captures/<date>-<name>.te. Neither is build input: rules are triaged out of the
+# draft into selinux-desktop-*/files/ by hand, annotated with the app that caused
+# them, and inherited-fd noise (noatsecure rlimitinh siginh) normally becomes
+# dontaudit rather than allow.
+set -eu
+
+if [ $# -lt 2 ]; then
+	echo "usage: ${0##*/} <since> <name> [ausearch args...]" >&2
+	exit 2
+fi
+
+since=$1
+name=$2
+shift 2
+
+out=$(cd -- "$(dirname -- "$0")" && pwd)/captures
+mkdir -p "$out"
+
+# ausearch wants the date and time as two separate arguments, with a two-digit
+# year: "09/26/26 07:35:25" works, "9/26/2026 07:35:25" is rejected.
+day_part=$(date --date="$since" +%m/%d/%y)
+time_part=$(date --date="$since" +%H:%M:%S)
+today=$(date +%F)
+
+audit=$out/$today-$name.audit
+te=$out/$today-$name.te
+
+echo "capturing AVCs since $day_part $time_part" >&2
+echo "  evidence: $audit" >&2
+echo "  draft:    $te" >&2
+
+ausearch -m avc,user_avc,selinux_err,user_selinux_err \
+	-ts "$day_part" "$time_part" "$@" |
+	tee "$audit" |
+	audit2allow -Revl |
+	tee "$te" |
+	less +F

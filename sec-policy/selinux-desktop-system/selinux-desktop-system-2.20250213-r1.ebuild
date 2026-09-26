@@ -4,11 +4,12 @@
 EAPI="7"
 
 IUSE=""
-MODS="desktop.system.base desktop.system.mosh"
+MODS="desktop.system.base desktop.system.mosh desktop.system desktop.system.users"
 BASEPOL="2.20250213-r1"
 POLICY_FILES="
 	desktop.system.base.if desktop.system.base.te desktop.system.base.fc
 	desktop.system.mosh.if desktop.system.mosh.te desktop.system.mosh.fc
+	desktop.system.cil desktop.system.users.cil
 "
 POLICY_TYPES="mcs"
 

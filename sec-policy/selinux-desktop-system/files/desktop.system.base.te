@@ -133,11 +133,15 @@ dontaudit sysadm_t portage_sandbox_t:process { noatsecure rlimitinh siginh };
 dontaudit sysadm_t portage_t:process { noatsecure rlimitinh siginh };
 dontaudit sysadm_t semanage_t:process { noatsecure rlimitinh siginh };
 dontaudit sysadm_t setfiles_t:process { noatsecure rlimitinh siginh };
-dontaudit sysadm_t sysadm_screen_t:process { noatsecure rlimitinh siginh };
 allow sysadm_t unlabeled_t:process getattr;
 corenet_tcp_bind_generic_node(sysadm_t)
 kernel_read_unlabeled_files(sysadm_t) # htop / proc
 kernel_manage_unlabeled_symlinks(sysadm_t) # htop / proc
+
+# NOTE: the deleted audit.te draft also carried sysadm_sudo_t rules (chkpwd_t, sysadm_t,
+# proc_t:filesystem). sysadm_sudo_t is not a type in this policy - checkmodule fails with
+# 'unknown type' - so that type was removed from the policy since the capture, and those
+# rules are not recoverable. The rest of the draft landed in this file as dontaudit.
 
 dontaudit system_dbusd_t policykit_t:process { noatsecure rlimitinh siginh };
 dontaudit system_dbusd_t rtkit_daemon_t:process { noatsecure rlimitinh siginh };

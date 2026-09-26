@@ -11,14 +11,9 @@
 ## </summary>
 ## </param>
 #
-interface(`pipewire_domtrans',`
-	gen_require(`
-		type pipewire_t, pipewire_exec_t;
-	')
-
-	corecmd_search_bin($1)
-	domtrans_pattern($1, pipewire_exec_t, pipewire_t)
-')
+## pipewire_domtrans is provided by the base policy (apps/pipewire.if).
+## Do not redefine it here: m4 fails the home package build with
+## "duplicate definition of pipewire_domtrans()".
 interface(`wireplumber_domtrans',`
 	gen_require(`
 		type wireplumber_t, wireplumber_exec_t;

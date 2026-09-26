@@ -105,7 +105,6 @@ dontaudit staff_t staff_dbusd_t:process { noatsecure rlimitinh siginh };
 #allow staff_t sysadm_t:file { open read }; # pgrep?
 #allow staff_t sysadm_t:key create; # openrc-user
 #allow staff_t sysadm_t:process { transition }; # openrc-user
-dontaudit staff_t sysadm_t:process { noatsecure rlimitinh siginh };
 #allow staff_t system_dbusd_t:dir { getattr search }; # pgrep?
 #allow staff_t system_dbusd_t:file { open read }; # pgrep?
 #allow staff_t systemd_logind_t:dir { getattr search }; # pgrep?
@@ -116,9 +115,7 @@ dontaudit staff_t sysadm_t:process { noatsecure rlimitinh siginh };
 #allow staff_t user_tmp_t:dir mounton; # 6757365206D61696E6C6F6F7?!
 allow staff_t var_lib_t:file map; # ckb-next
 #allow staff_t var_run_t:file { create getattr open write }; # openrc-user
-dontaudit staff_t xauth_t:process { noatsecure rlimitinh siginh };
 #allow staff_t xserver_t:dir { getattr search }; # pgrep?
-dontaudit staff_t xserver_t:process { noatsecure rlimitinh };
 allow staff_t xserver_t:unix_dgram_socket { sendto recvfrom }; # ckb-next
 ##!!!! This avc can be allowed using one of the these booleans:
 ##     allow_write_xshm, xserver_client_writes_xserver_tmpfs
