@@ -65,6 +65,7 @@ gen_require(`
   class netlink_generic_socket { bind create getattr read setopt write };
   class anon_inode { create getattr map read write };
   class udp_socket read;
+  class io_uring allowed;
   class key create;
   class unix_dgram_socket sendto;
   class tcp_socket name_bind;
@@ -168,6 +169,9 @@ kernel_read_psi(staff_bubblewrap_t)
 allow staff_bubblewrap_t xdg_data_t:lnk_file read;
 allow staff_bubblewrap_t self:udp_socket read;
 
+# java binds an unreserved port for its own services.
+corenet_tcp_bind_all_unreserved_ports(staff_t)
+
 
 # htop and nvtop walk every process's /proc/<pid> directory, and each of those
 # directories carries that process's domain label. Without this a user domain
@@ -185,14 +189,13 @@ domain_read_all_domains_state(staff_t)
 allow staff_t domain:{ tcp_socket udp_socket unix_stream_socket unix_dgram_socket } getattr;
 allow staff_t domain:{ netlink_route_socket netlink_kobject_uevent_socket netlink_selinux_socket netlink_generic_socket } getattr;
 allow staff_t domain:anon_inode getattr;
-# nvtop also stats io_uring fds, and the kernel reports that denial against
-# class io_uring (not anon_inode). It CANNOT be granted here: checkmodule's
-# class table has io_uring:getattr, but the policy's does not, so declaring the
-# class and allowing it makes semodule fail with
-#   Failed to resolve permission getattr (desktop.home/cil)
-# That is a kernel-vs-policy class table mismatch, not a policy bug. Left
-# denied: nvtop cannot stat io_uring fds under enforcing. Revisit after a
-# libsepol/base-policy rebuild.
+# io_uring, and this needs care: the kernel reports two different denials
+# against class io_uring, and they behave differently. `getattr` (nvtop statting
+# an io_uring fd) is NOT in the policy's class table - declaring it makes
+# semodule fail with "Failed to resolve permission getattr", so that one stays
+# denied. `allowed`, which the harness itself trips, IS in the table and is
+# granted here.
+allow staff_t self:io_uring allowed;
 #files_rw_runtime_dirs(staff_t) # openrc-user
 #fs_create_cgroup_dirs(staff_t) # openrc-user
 #fs_mount_fusefs(staff_t) # fusermount3?

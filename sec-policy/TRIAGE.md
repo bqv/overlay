@@ -35,6 +35,10 @@ Decide each pattern by what it does under enforcing:
 | `staff_bubblewrap_t -> xdg_data_t:lnk_file { read }`, `self:udp_socket { read }` | granted | raw allows |
 | `staff_t -> staff_bubblewrap_t:process { setsched }`, `staff_t -> self:process { ptrace }` | granted | raw allows (the harness scheduling and inspecting its own children) |
 | `staff_t -> domain:anon_inode { getattr }` | granted | widened from `self:` - nvtop stats other domains' anon_inodes too |
+| `semanage_t` relabelling the policy store (`setsebool -P` in `pkg_postinst`) | **fixed** | I first recorded this as unfixable-by-constraint and was wrong. The UBAC constraint is `(or (eq u1 u2) (eq t1 can_change_object_identity))`; `eq u1 u2` can never hold (`staff_u` subject, `system_u` store files) but the *type membership* branch can be satisfied: `attribute can_change_object_identity;` in the require plus `typeattribute semanage_t can_change_object_identity;`. No neverallow guards it, it links, and `setsebool -P` now produces **zero** relabelto denials - so `make merge` is clean under enforcing |
+| `staff_t -> self:io_uring { allowed }` (the harness) | granted | `class io_uring allowed;` + `allow staff_t self:io_uring allowed;`. Worth knowing: the kernel denies two different io_uring perms and they behave differently - `allowed` is in the policy's class table and grants fine, `getattr` is not and cannot be (see Outstanding) |
+| `staff_t -> unreserved_port_t:tcp_socket { name_bind }` (java, protonmail-bridge) | granted | `corenet_tcp_bind_all_unreserved_ports(staff_t)` - it expands against the `unreserved_port_type` attribute, not the `unreserved_port_t` type, which is worth remembering when verifying |
+| `dhcpc_script_t -> init_runtime_t:dir { search }` | granted | raw allow; refpolicy has no search interface for the init runtime dir |
 | `staff_git_t -> portage_ebuild_t:{dir,file}` (git, 35/capture), `staff_screen_t -> portage_ebuild_t:dir { search }` (tmux, 6) | granted | `portage_read_ebuild(staff_git_t)` plus a raw search allow for tmux. The overlay lives under `/var/db/repos`, whose tree is labelled `portage_ebuild_t`, and refpolicy only expects portage tools there - so ordinary tooling working in that tree needs traversal |
 | `sysadm_t -> portage_ebuild_t:file { execute, execute_no_trans, read, open }` | granted | `portage_read_ebuild(sysadm_t)` + `can_exec(sysadm_t, portage_ebuild_t)`, so `make -C <pkg> compile/merge` runs an ebuild under enforcing |
 | `staff_bubblewrap_t -> proc_psi_t:dir { search }` | granted | `kernel_read_psi(staff_bubblewrap_t)` - verified 0 denials afterwards |
@@ -59,6 +63,16 @@ Decide each pattern by what it does under enforcing:
 | `staff_git_t -> {user_tmpfs_t:dir search, ptmx_t:chr_file rw, portage_tmp_t:file rw, staff_t:unix_stream_socket}` and `staff_t -> staff_git_t:process { nnp_transition nosuid_transition }` | git via the staff_git_t wrapper | staff_git_t is in the permissive list; triage when it comes off |
 | `nginx_t -> unlabeled_t:packet { send recv }` on 127.0.0.1:33278 <-> :8080 | nginx cannot talk to the gate | the legacy conntrack entry that predates the 8080 mapping. Clearing it needs a conntrack flush, which is **not** done - it would reset the session. Self-heals when the connection recycles |
 
+## Outstanding (new this round)
+
+| pattern | what breaks under enforcing | plan |
+|---|---|---|
+| `staff_git_t -> user_bin_t:{dir,file}` (62 in one 60s window, `git`) | git cannot work in `~/bin` | the largest new item; grant via the userdom interface |
+| `gpg_t -> portage_tmp_t:file`, `gpg_t -> user_home_t:{file,dir}` (`gpg2`) | gpg cannot sign (git commits) | legitimate - grant |
+| `staff_t -> self:process { execmem }` (`java`) | the JIT runtime cannot allocate executable memory | refpolicy's `allow_execmem` boolean is the designed switch, and `setsebool -P` works now - but it is a W^X relaxation, so it is a deliberate choice, not a silent grant |
+| `staff_t -> xdg_config_t:file { execute }` (`rc-service`) | an openrc user service cannot start | identify the script, then grant |
+| `staff_gkeyringd_t -> portage_tmp_t:file` (`gnome-keyring-d`), `staff_bubblewrap_t -> user_tmp_t:file` (`steamwebhelper`), `mozilla_t -> cgroup_t:file` | keyring / Steam / the browser lose that access | triage individually - they look like stray reads rather than missing classes |
+
 ## Tooling note
 
 The require-checker that scans for types referenced but not required now also
@@ -68,11 +82,23 @@ costing an extra build. Class perms do not need the same treatment - checkmodule
 takes those from its own class table, and the apparent gaps are refpolicy's m4
 perm macros (`manage_fifo_file_perms` and friends).
 
+## Verification traps hit (so they are not hit again)
+
+- The require-checker **must run as root**: without it the glob into the mode-700
+  store expands to nothing, the declared-type set is empty, and every type looks
+  like "not in policy". It now asserts it can see >500 types and fails loudly.
+- CIL keeps `self`. Grep for `(allow staff_t self (...)` - searching for the
+  expanded `staff_t staff_t` silently finds nothing and looks like a missing grant.
+- A rule can be *documented* without being *written*: one batch replaced a comment
+  with text claiming a grant and omitted the `allow` line, which the merge happily
+  accepted. Verify in the loaded CIL, not in the source.
+
 ## Round log
 
 - r3: found and removed the `neverallow` that made the home package unlinkable;
   granted `domain_read_all_domains_state(staff_t)` and the nvtop socket getattrs.
   Real denials 1,119 -> 858.
+- r6-r8: re-scoped to enforcing-ready. Fixed the neverallow that made the home package uninstallable; granted htop/nvtop /proc and socket state, nginx->gate, psi, git+tmux portage traversal, dhcpcd, java's port bind, and io_uring `allowed`. **Fixed the setsebool relabelto block by satisfying the UBAC constraint** (~84 denials/capture -> 0). Real denials 1,119 -> ~40-56 per window.
 - r5: ebuild/portage grants, psi, git+tmux traversal of the portage tree; and the finding that the setsebool relabelto denials are constraint-blocked, not allow-blocked (see the outstanding table).
 - r4: batch of nine grants (nginx->gate, adb, fuse, the whole bwrap remount
   cluster, ptmx, setsched, ptrace, anon_inode widened). Real denials 748 -> 470

@@ -2,6 +2,7 @@ policy_module(desktop.system.base, 1.0)
 
 gen_require(`
   attribute domain;
+  attribute can_change_object_identity;
   type initrc_state_t;
   type dhcpc_t;
   type kmod_t;
@@ -50,6 +51,7 @@ gen_require(`
   type portage_ebuild_t;
   type staff_screen_t;
   type staff_git_t;
+  type init_runtime_t;
 ')
 
 kernel_getattr_proc(chkpwd_t)
@@ -178,10 +180,19 @@ allow sysadm_t staff_t:unix_stream_socket { read write };
 # post-install step cannot complete with enforcing on. These are refpolicy's
 # interfaces for exactly that, plus the two file types they do not cover.
 seutil_manage_module_store(semanage_t)
-seutil_relabelto_bin_policy(semanage_t)
 allow semanage_t file_context_t:file relabelto;
 allow semanage_t selinux_config_t:file relabelto;
 allow semanage_t tracefs_t:filesystem getattr;
+
+# Those allows still left every relabelto denied, because the block is a
+# constraint rather than a missing allow:
+#   (constrain (file (create relabelfrom relabelto))
+#     (or (eq u1 u2) (eq t1 can_change_object_identity)))
+# The store files carry system_u while this runs as staff_u, so eq u1 u2 fails,
+# and can_change_object_identity held only kernel_t. Constraints sit above the
+# allow rules, so attribute membership is the only way to satisfy it - which is
+# exactly what a policy-management domain needs. No neverallow guards it.
+typeattribute semanage_t can_change_object_identity;
 
 # Running an ebuild as the admin: `make compile/merge` executes the .ebuild
 # file, so sysadm_t needs to read and execute portage_ebuild_t.
@@ -195,6 +206,10 @@ can_exec(sysadm_t, portage_ebuild_t)
 portage_read_ebuild(staff_git_t)
 allow staff_screen_t portage_ebuild_t:dir search;
 allow utempter_t sysadm_t:udp_socket { read write };
+
+# dhcpcd-run-hook searches the init runtime directory; refpolicy has no search
+# interface for it (only create/delete/dontaudit), so this is a raw allow.
+allow dhcpc_script_t init_runtime_t:dir search;
 term_use_ptmx(utempter_t)
 
 fs_getattr_tmpfs(xauth_t)
