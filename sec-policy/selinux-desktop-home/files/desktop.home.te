@@ -80,6 +80,7 @@ gen_require(`
   type xauth_tmp_t;
   type staff_bubblewrap_t;
   type xdg_data_t;
+  type mozilla_t;
 ')
 
 ##============= staff_t ==============
@@ -171,6 +172,9 @@ allow staff_bubblewrap_t self:udp_socket read;
 
 # java binds an unreserved port for its own services.
 corenet_tcp_bind_all_unreserved_ports(staff_t)
+
+# firefox's WebContent reads its own cgroup (/sys/fs/cgroup/.../cpu.max).
+fs_read_cgroup_files(mozilla_t)
 
 
 # htop and nvtop walk every process's /proc/<pid> directory, and each of those

@@ -204,6 +204,10 @@ can_exec(sysadm_t, portage_ebuild_t)
 # the user's git wrapper reads and searches it, and a tmux session with a cwd
 # there searches it. refpolicy only expects portage tools in that tree.
 portage_read_ebuild(staff_git_t)
+# The overlay itself lives under /var/db/repos, so *reading* it as the session
+# user (editing policy files, inspecting ebuilds) needs this too - without it the
+# policy cannot be maintained as staff_t under enforcing.
+portage_read_ebuild(staff_t)
 allow staff_screen_t portage_ebuild_t:dir search;
 allow utempter_t sysadm_t:udp_socket { read write };
 

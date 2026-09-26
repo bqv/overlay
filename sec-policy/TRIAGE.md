@@ -63,6 +63,27 @@ Decide each pattern by what it does under enforcing:
 | `staff_git_t -> {user_tmpfs_t:dir search, ptmx_t:chr_file rw, portage_tmp_t:file rw, staff_t:unix_stream_socket}` and `staff_t -> staff_git_t:process { nnp_transition nosuid_transition }` | git via the staff_git_t wrapper | staff_git_t is in the permissive list; triage when it comes off |
 | `nginx_t -> unlabeled_t:packet { send recv }` on 127.0.0.1:33278 <-> :8080 | nginx cannot talk to the gate | the legacy conntrack entry that predates the 8080 mapping. Clearing it needs a conntrack flush, which is **not** done - it would reset the session. Self-heals when the connection recycles |
 
+## Settled this round
+
+| pattern | decision |
+|---|---|
+| `mozilla_t -> cgroup_t:file { getattr read open }` on `/sys/fs/cgroup/*/cpu.max` | granted: `fs_read_cgroup_files(mozilla_t)` - the browser reads its own cgroup |
+| `staff_t -> portage_ebuild_t:file { read open }` | granted: `portage_read_ebuild(staff_t)`. The overlay lives under `/var/db/repos`, so *reading* the policy source as the session user is denied otherwise - without this the policy could not be maintained as staff_t under enforcing |
+| `mozilla_t -> portage_tmp_t:file` on `/usr/lib/locale/locale-archive` | **not a policy problem**: the file was mislabelled `portage_tmp_t` (a glibc rebuild's leftover). `matchpathcon` says `locale_t`, and `restorecon` fixed it. Worth remembering that a denial can be the *label* being wrong rather than the policy being incomplete |
+
+## The nginx :80 packet denials - transient, not a gap
+
+Occasional `nginx_t -> unlabeled_t:packet { send recv }` on new connections.
+Investigated: the *stored* conntrack entry for the same flow carries
+`secctx=system_u:object_r:http_server_packet_t:s0`, real client connections
+(`192.168.1.100 -> :80`) show the correct `http_server_packet_t`, and nginx's
+allow for it is in the policy. Three fresh connections produced two AVCs, so it
+is a setup-time race on the first packet, not per-connection and not a labelling
+gap. Under enforcing it would drop that packet and TCP would retransmit.
+The likely fix is the ruleset's hook priority - the input chain sits at `-225`,
+the same priority SELinux uses - but that is the ruleset's design and a change
+to nftables, so it is recorded rather than done.
+
 ## Outstanding (new this round)
 
 | pattern | what breaks under enforcing | plan |
