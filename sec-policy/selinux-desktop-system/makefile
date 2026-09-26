@@ -9,9 +9,9 @@ all:
 	ebuild *.ebuild manifest
 
 compile:
-	-rm -f $(HEADERS)/desktop.system*.if
+	-rm -f $(HEADERS)/desktop.system.base.if $(HEADERS)/desktop.system.mosh.if
 	ebuild *.ebuild manifest clean compile
 
 merge:
-	-rm -f $(HEADERS)/desktop.system*.if
+	-rm -f $(HEADERS)/desktop.system.base.if $(HEADERS)/desktop.system.mosh.if
 	ebuild *.ebuild manifest clean merge

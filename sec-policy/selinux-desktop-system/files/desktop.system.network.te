@@ -1,0 +1,37 @@
+policy_module(desktop.system.network, 1.0)
+
+gen_require(`
+	attribute packet_type;
+	type staff_t;
+	type stremio_server_t;
+	type ssh_client_packet_t;
+	class packet { recv send };
+')
+
+########################################
+#
+# Packet labelling - the SELinux half of files/ruleset.nftables.
+#
+# That ruleset gives every packet a SELinux secmark (a *_packet_t type) from
+# its protocol, port and direction, and the kernel then checks send/recv
+# against it. Its secmapping_out map only labelled 22, 53, 80 and 443, so
+# mosh's UDP 60001/60002 arrived as unlabeled_t: captures/ carries 53 send and
+# 16 recv denials against unlabeled_t for staff_t. Rather than grant staff_t
+# blanket access to unlabelled traffic, declare a packet type and label the
+# ports, so the ports stay covered by a secmark.
+#
+
+# refpolicy has no mosh_packet_t. packet_type is the attribute that makes a
+# type usable as a secmark - cf. corenet_client_packet()/corenet_server_packet().
+type mosh_packet_t;
+typeattribute mosh_packet_t packet_type;
+
+# mosh is symmetric: the outbound map labels the packets and conntrack carries
+# the secmark back onto the replies (ct state established,related in the
+# ruleset), so one mapping covers both directions.
+allow staff_t mosh_packet_t:packet { send recv };
+
+# Stremio connects outward to :22, which secmapping_out labels ssh_client, so
+# its traffic is checked against ssh_client_packet_t. Masked today only because
+# stremio_server_t sits in a permissive domain.
+allow stremio_server_t ssh_client_packet_t:packet { send recv };
