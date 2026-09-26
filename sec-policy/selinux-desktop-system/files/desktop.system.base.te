@@ -163,6 +163,9 @@ term_use_console(tmpfiles_t)
 allow udev_t self:capability2 perfmon;
 
 allow utempter_t staff_t:udp_socket { read write };
+
+# sesh: the session helper talks to the user's session sockets.
+allow sysadm_t staff_t:unix_stream_socket { read write };
 allow utempter_t sysadm_t:udp_socket { read write };
 term_use_ptmx(utempter_t)
 

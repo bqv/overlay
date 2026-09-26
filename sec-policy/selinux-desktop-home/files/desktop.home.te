@@ -54,8 +54,8 @@ gen_require(`
   type policy_config_t;
   type proc_psi_t;
   type utempter_t;
-  class filesystem getattr;
-  class process { execmem getcap noatsecure rlimitinh setexec siginh transition };
+  class filesystem { getattr remount };
+  class process { execmem getcap noatsecure ptrace rlimitinh setexec setsched siginh transition };
   class fd use;
   class file { create getattr map open read unlink write relabelfrom relabelto };
   class dir { add_name create getattr mounton open read remove_name search relabelfrom relabelto };
@@ -63,7 +63,8 @@ gen_require(`
   class fifo_file { create getattr open read write };
   class capability { audit_write dac_override dac_read_search net_admin setuid };
   class netlink_generic_socket { bind create getattr read setopt write };
-  class anon_inode { create map read write };
+  class anon_inode { create getattr map read write };
+  class udp_socket read;
   class key create;
   class unix_dgram_socket sendto;
   class tcp_socket name_bind;
@@ -76,6 +77,8 @@ gen_require(`
   type systemd_sessions_runtime_t;
   type wtmp_t;
   type xauth_tmp_t;
+  type staff_bubblewrap_t;
+  type xdg_data_t;
 ')
 
 ##============= staff_t ==============
@@ -138,6 +141,31 @@ allow staff_t xserver_tmpfs_t:file write; # ckb-next
 #corenet_udp_bind_howl_port(staff_t) # MainThread?
 dev_read_generic_files(staff_t) # ckb-next
 files_read_var_lib_symlinks(staff_t) # rofi
+# --- staff_t session needs, from captures/ ---
+
+# adb binds a node socket (a privileged bind); 22 denials in one capture.
+corenet_tcp_bind_generic_node(staff_t)
+
+# the harness ptrace's its own children and sets the scheduler of the sandbox.
+allow staff_t self:process ptrace;
+allow staff_t staff_bubblewrap_t:process setsched;
+
+# fuse filesystems from the session (fuse_worker, 22 read + 22 write).
+storage_rw_fuse(staff_t)
+
+# --- the bubblewrap sandbox (this session runs inside one) ---
+
+# bwrap builds its sandbox by remounting /proc, /dev/pts, sysfs, bpf, configfs,
+# debugfs, tracefs, pstore, efivarfs, binfmt_misc...: ~200 remount denials in
+# one capture. If this is denied under enforcing the sandbox cannot be built.
+fs_remount_all_fs(staff_bubblewrap_t)
+
+# ...and it needs the controlling pty, plus xdg data links and to read its own
+# udp socket.
+term_use_ptmx(staff_bubblewrap_t)
+allow staff_bubblewrap_t xdg_data_t:lnk_file read;
+allow staff_bubblewrap_t self:udp_socket read;
+
 
 # htop and nvtop walk every process's /proc/<pid> directory, and each of those
 # directories carries that process's domain label. Without this a user domain
@@ -154,7 +182,7 @@ domain_read_all_domains_state(staff_t)
 # them. getattr is read-only metadata: it cannot connect, send or receive.
 allow staff_t domain:{ tcp_socket udp_socket unix_stream_socket unix_dgram_socket } getattr;
 allow staff_t domain:{ netlink_route_socket netlink_kobject_uevent_socket netlink_selinux_socket netlink_generic_socket } getattr;
-allow staff_t self:anon_inode getattr;
+allow staff_t domain:anon_inode getattr;
 # nvtop also stats io_uring fds, and the kernel reports that denial against
 # class io_uring (not anon_inode). It CANNOT be granted here: checkmodule's
 # class table has io_uring:getattr, but the policy's does not, so declaring the

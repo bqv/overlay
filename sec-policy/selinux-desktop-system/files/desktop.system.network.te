@@ -48,6 +48,11 @@ allow nginx_t http_server_packet_t:packet { send recv };
 # denials). It is mapped to http_client now, and allowed here.
 allow nginx_t http_client_packet_t:packet { send recv };
 
+# nginx reaches the local gate at 127.0.0.1:8080, and port 8080 is labelled
+# http_cache_port_t, so the connection needs name_connect on that port type.
+# Without it enforcing stops nginx talking to the gate and the web UI dies.
+corenet_tcp_connect_http_cache_port(nginx_t)
+
 ###
 ### mDNS - UDP 5353
 ###
