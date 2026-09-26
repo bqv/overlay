@@ -81,6 +81,42 @@ release distfile. It is not tracked in git. Provenance:
 Both hashes are on the `DIST refpolicy-2.20250213.tar.bz2` line of
 `selinux-desktop-system/Manifest`.
 
+## Language: CIL or TE?
+
+Both work here, and the choice is real.
+
+What the eclass supports: `MODS`/`POLICY_FILES` accept either. The refpolicy
+build Makefile only globs `*.te`, so a `.cil` is not *compiled* - but the
+eclass has a pass-through branch that copies it, and `semodule -i` accepts CIL
+natively. Verified: `ebuild ... install` puts `desktop.system.cil` and
+`desktop.system.users.cil` into the image, and the box runs those two modules
+alongside the refpolicy ones.
+
+So depending on refpolicy does **not** force your own modules to be TE.
+refpolicy is the base policy and its interface library; your modules may be
+CIL, and two already are.
+
+**CIL** - one file per module instead of a `.te`/`.if`/`.fc` trio (file
+contexts are `(filecon ...)`), no m4, and it is the language libsemanage
+stores, so store -> source is near-lossless. Cost: the interface library is m4
+and therefore unavailable, rules must be spelled out, and with `secilc` not
+installed a bad `.cil` only surfaces at `semodule -i` time.
+
+**TE** - you keep refpolicy's macros (`dev_read_generic_files`, `corenet_*`,
+`kernel_getattr_proc`, ...) and the hand-written per-rule provenance comments,
+which is where much of this policy's value sits.
+
+The trap worth knowing: a recovered `.cil` is the *expanded* form, so it is the
+residue of macro expansion, and re-macroing a module is a **re-design, not a
+round-trip**. Writing `ssh_t user_home_t:dir search` as the interface that
+grants it grants that interface's full documented access - a different rule
+set, often a better one, but a policy change. It has to be verified by diffing
+the compiled rule set against the CIL, never assumed.
+
+Current choice: the two recovered modules ship as CIL (they have no macro
+history left to preserve); the hand-written modules stay TE. `tools/` is empty
+of a converter on purpose - see git history for the CIL->TE experiment.
+
 ## The network half
 
 The point of the exercise, and half-built. `ruleset.nftables` is **live** - it
