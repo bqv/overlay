@@ -67,6 +67,15 @@ gen_require(`
   class key create;
   class unix_dgram_socket sendto;
   class tcp_socket name_bind;
+  type default_t;
+  type initrc_exec_t;
+  type iptables_initrc_exec_t;
+  type local_login_t;
+  type postgresql_initrc_exec_t;
+  type shadow_t;
+  type systemd_sessions_runtime_t;
+  type wtmp_t;
+  type xauth_tmp_t;
 ')
 
 ##============= staff_t ==============

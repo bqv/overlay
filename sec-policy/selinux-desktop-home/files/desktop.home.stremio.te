@@ -32,6 +32,7 @@ gen_require(`
 	class fifo_file { read write };
 	class dir { getattr open read search };
 	class file { getattr open read };
+	type cgroup_t;
 ')
 
 ########################################

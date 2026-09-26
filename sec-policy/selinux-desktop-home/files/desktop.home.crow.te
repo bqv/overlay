@@ -29,6 +29,8 @@ gen_require(`
 	class fd use;
 	class chr_file { getattr ioctl open read write };
 	class unix_stream_socket connectto;
+	type device_t;
+	type user_runtime_t;
 ')
 
 ########################################
