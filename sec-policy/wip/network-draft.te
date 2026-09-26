@@ -1,0 +1,63 @@
+########################################
+# DRAFT - NOT INSTALLED, NOT BUILT.
+#
+# The packet-class allows the captures call for. wip/ is not inside any
+# package's files/ directory, so nothing here is compiled or loaded. To apply,
+# move rules into selinux-desktop-home/files/desktop.home.te (or
+# desktop.system.base.te, or a new module) and rebuild.
+#
+# Evidence - 59 `packet` denials across captures/:
+#
+#     39  staff_t          -> unlabeled_t          { send }
+#     16  staff_t          -> unlabeled_t          { recv }
+#      2  stremio_server_t -> ssh_client_packet_t  { send }
+#      2  stremio_server_t -> ssh_client_packet_t  { recv }
+#
+# Neither allow exists in the policy today. The base module declares 471
+# *_packet_t types, so labelled networking is available and working.
+########################################
+
+# --- staff_t -> unlabeled_t ------------------------------------------------
+#
+# Everything the secmark maps do not cover arrives unlabelled: the maps only
+# label ports 22, 53, 80 and 443, so mosh (UDP 60001/60002, to
+# 62.210.213.30) and all other traffic is checked as unlabeled_t. Two ways
+# out - pick one, they are not equivalent:
+#
+# (A) allow unlabelled packets for the domain. This is the draft already
+#     written and commented out in desktop.home.te:
+#         #corenet_sendrecv_unlabeled_packets(staff_t) # MainThread?
+#     Simple and honest about the maps being non-exhaustive - but it means the
+#     secmark labels only ever restrict traffic on those four mapped ports.
+corenet_sendrecv_unlabeled_packets(staff_t)
+
+# (B) label mosh's ports instead, so the traffic is actually covered by a
+#     secmark. Needs a secmark and map entries in files/ruleset.nftables:
+#         secmark mosh_server { "system_u:object_r:<PACKET_TYPE>:s0" }
+#         60001 : "mosh_server", 60002 : "mosh_server",  (secmapping_out)
+#     There is no mosh_packet_t in the policy (checked: 0 hits), so
+#     <PACKET_TYPE> is either a new type declared by a module, or an existing
+#     generic packet type. That is a real addition, not a one-liner - and if
+#     the answer is "declare a new type", the maps should probably be
+#     restructured around policy types rather than around a fixed port list.
+
+# --- stremio_server_t -> ssh_client_packet_t -------------------------------
+#
+# Stremio connects outward to :22 and secmapping_out labels port 22 as
+# ssh_client, so its traffic is checked against ssh_client_packet_t.
+# Currently masked by the permissive domain stremio_server_t.
+allow stremio_server_t ssh_client_packet_t:packet { send recv };
+
+# --- not covered by these captures ----------------------------------------
+#
+# The ruleset labels :53 as dns_client for both directions, and :80/:443 as
+# http_server inbound / http_client outbound. Those labels exist but no
+# capture shows a denial against them, either because the traffic is already
+# allowed or because the domains that generate it are permissive. Which
+# domains are permissive today:
+#
+#     crow_t gajim_t java_t mplayer_t staff_git_t staff_t stremio_server_t
+#
+# Note staff_t - the main desktop user domain - is one of them, so most of what
+# these captures show is logged, not enforced. Re-check the packet evidence
+# after staff_t leaves the permissive list; expect more of it.

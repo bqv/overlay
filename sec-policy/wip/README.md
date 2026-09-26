@@ -68,6 +68,14 @@ Two distinct deficits, and only one of them is a missing allow:
    Currently masked because `stremio_server_t` is in a permissive domain
    (`semodule -l` shows `permissive_stremio_server_t`).
 
+## `network-draft.te`
+
+The concrete allows the 59 denials call for, with the evidence and the
+trade-offs, are drafted in `network-draft.te` in this directory. Not installed,
+not built - it is a review artifact. It also notes that `staff_t` itself is
+currently in a permissive domain, so most of these denials are logged rather
+than enforced, and the packet evidence should be re-read once that changes.
+
 ## Wiring order
 
 1. Decide the `unlabeled_t` question above; it affects every domain, not just
