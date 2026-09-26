@@ -47,6 +47,9 @@ gen_require(`
   class capability { dac_override net_admin };
   class unix_dgram_socket sendto;
   class tcp_socket name_bind;
+  type portage_ebuild_t;
+  type staff_screen_t;
+  type staff_git_t;
 ')
 
 kernel_getattr_proc(chkpwd_t)
@@ -184,6 +187,13 @@ allow semanage_t tracefs_t:filesystem getattr;
 # file, so sysadm_t needs to read and execute portage_ebuild_t.
 portage_read_ebuild(sysadm_t)
 can_exec(sysadm_t, portage_ebuild_t)
+
+# The overlay lives under /var/db/repos, whose tree is labelled
+# portage_ebuild_t, so ordinary user tooling that works in it needs traversal:
+# the user's git wrapper reads and searches it, and a tmux session with a cwd
+# there searches it. refpolicy only expects portage tools in that tree.
+portage_read_ebuild(staff_git_t)
+allow staff_screen_t portage_ebuild_t:dir search;
 allow utempter_t sysadm_t:udp_socket { read write };
 term_use_ptmx(utempter_t)
 

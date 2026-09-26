@@ -35,6 +35,9 @@ Decide each pattern by what it does under enforcing:
 | `staff_bubblewrap_t -> xdg_data_t:lnk_file { read }`, `self:udp_socket { read }` | granted | raw allows |
 | `staff_t -> staff_bubblewrap_t:process { setsched }`, `staff_t -> self:process { ptrace }` | granted | raw allows (the harness scheduling and inspecting its own children) |
 | `staff_t -> domain:anon_inode { getattr }` | granted | widened from `self:` - nvtop stats other domains' anon_inodes too |
+| `staff_git_t -> portage_ebuild_t:{dir,file}` (git, 35/capture), `staff_screen_t -> portage_ebuild_t:dir { search }` (tmux, 6) | granted | `portage_read_ebuild(staff_git_t)` plus a raw search allow for tmux. The overlay lives under `/var/db/repos`, whose tree is labelled `portage_ebuild_t`, and refpolicy only expects portage tools there - so ordinary tooling working in that tree needs traversal |
+| `sysadm_t -> portage_ebuild_t:file { execute, execute_no_trans, read, open }` | granted | `portage_read_ebuild(sysadm_t)` + `can_exec(sysadm_t, portage_ebuild_t)`, so `make -C <pkg> compile/merge` runs an ebuild under enforcing |
+| `staff_bubblewrap_t -> proc_psi_t:dir { search }` | granted | `kernel_read_psi(staff_bubblewrap_t)` - verified 0 denials afterwards |
 | network: mosh 60001/2, nginx :80, the local :8080 gate hop, mDNS 5353, ssh/http/dns/icmp | granted | secmark labelling + packet-type allows; see `wip/README.md` |
 
 ## Outstanding
@@ -56,11 +59,21 @@ Decide each pattern by what it does under enforcing:
 | `staff_git_t -> {user_tmpfs_t:dir search, ptmx_t:chr_file rw, portage_tmp_t:file rw, staff_t:unix_stream_socket}` and `staff_t -> staff_git_t:process { nnp_transition nosuid_transition }` | git via the staff_git_t wrapper | staff_git_t is in the permissive list; triage when it comes off |
 | `nginx_t -> unlabeled_t:packet { send recv }` on 127.0.0.1:33278 <-> :8080 | nginx cannot talk to the gate | the legacy conntrack entry that predates the 8080 mapping. Clearing it needs a conntrack flush, which is **not** done - it would reset the session. Self-heals when the connection recycles |
 
+## Tooling note
+
+The require-checker that scans for types referenced but not required now also
+reads *interface arguments*, not just raw allow/dontaudit lines: `staff_git_t`
+was passed to `portage_read_ebuild()` and was invisible to the old check,
+costing an extra build. Class perms do not need the same treatment - checkmodule
+takes those from its own class table, and the apparent gaps are refpolicy's m4
+perm macros (`manage_fifo_file_perms` and friends).
+
 ## Round log
 
 - r3: found and removed the `neverallow` that made the home package unlinkable;
   granted `domain_read_all_domains_state(staff_t)` and the nvtop socket getattrs.
   Real denials 1,119 -> 858.
+- r5: ebuild/portage grants, psi, git+tmux traversal of the portage tree; and the finding that the setsebool relabelto denials are constraint-blocked, not allow-blocked (see the outstanding table).
 - r4: batch of nine grants (nginx->gate, adb, fuse, the whole bwrap remount
   cluster, ptmx, setsched, ptrace, anon_inode widened). Real denials 748 -> 470
   by the 8-minute measure, and **zero in a 90-second window taken immediately
