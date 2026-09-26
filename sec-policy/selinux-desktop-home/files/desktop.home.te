@@ -81,6 +81,7 @@ gen_require(`
   type staff_bubblewrap_t;
   type xdg_data_t;
   type mozilla_t;
+  type staff_gkeyringd_t;
 ')
 
 ##============= staff_t ==============
@@ -165,6 +166,9 @@ fs_remount_all_fs(staff_bubblewrap_t)
 # ...and it needs the controlling pty, plus xdg data links and to read its own
 # udp socket.
 term_use_ptmx(staff_bubblewrap_t)
+
+# steam's webhelper reads its own crash-dump settings under /tmp.
+userdom_read_user_tmp_files(staff_bubblewrap_t)
 # /proc/pressure: the sandbox reads pressure-stall info.
 kernel_read_psi(staff_bubblewrap_t)
 allow staff_bubblewrap_t xdg_data_t:lnk_file read;
@@ -175,6 +179,12 @@ corenet_tcp_bind_all_unreserved_ports(staff_t)
 
 # firefox's WebContent reads its own cgroup (/sys/fs/cgroup/.../cpu.max).
 fs_read_cgroup_files(mozilla_t)
+
+# staff_gkeyringd_t is another per-role app domain, and like staff_git_t it gets
+# the app's own access but nothing for the user's files: gnome_keyring_home_t
+# exists with zero rules for it, so under enforcing the keyring daemon could not
+# read the user's keyrings at all. This is refpolicy's interface for it.
+gnome_read_keyring_home_files(staff_gkeyringd_t)
 
 
 # htop and nvtop walk every process's /proc/<pid> directory, and each of those

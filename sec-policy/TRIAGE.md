@@ -151,6 +151,24 @@ not even stat, and under active UBAC the mixed SELinux users are checked too.
 component of the very files this workflow edits, so it needs the operator's
 decision rather than mine.
 
+## Enforcement readiness: the critical paths
+
+The noise question ("what is denied?") is nearly settled, so the useful question
+becomes the lockout one: **is any service whose failure would cut off access
+being denied anything?** Scanning for denials whose *subject* is a critical
+service gives a short list:
+
+| subject | denials | disposition |
+|---|---|---|
+| `staff_sudo_t` | inherited-fd perms on `chkpwd_t`/`sysadm_t` (~70), `proc_t:filesystem getattr` (25) | the fd perms are the class this package already dontaudits elsewhere - informational, transition not blocked - so `dontaudit`; the statfs gets `kernel_getattr_proc()`. sudo keeps working |
+| `sshd_t` | `initrc_state_t` reads (2 each), `var_run_t:file read` (1) | **the lockout-relevant pair.** This box is reached over SSH (`branch pts/2 (192.168.1.100)` is logged in right now), so these are granted: `init_read_script_status_files(sshd_t)` and a read on `var_run_t` |
+| `systemd_logind_t` | `cgroup_t:file watch` (1) | `fs_watch_cgroup_files()` |
+| everything else | none | sshd, xdm, dbusd, logind, pipewire, wireplumber, init, auditd, getty have no denials of their own |
+
+Verified live: sshd listening on :22 with a session connected, X sockets up,
+9 dbus processes, pipewire+wireplumber running. **No critical service is denied
+anything it needs.**
+
 ## Tooling note
 
 The require-checker that scans for types referenced but not required now also

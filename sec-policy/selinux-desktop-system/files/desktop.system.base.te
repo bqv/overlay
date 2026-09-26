@@ -52,6 +52,9 @@ gen_require(`
   type staff_screen_t;
   type staff_git_t;
   type init_runtime_t;
+  type user_bin_t;
+  type staff_sudo_t;
+  type var_run_t;
 ')
 
 kernel_getattr_proc(chkpwd_t)
@@ -221,6 +224,28 @@ term_use_ptmx(staff_git_t)
 portage_read_ebuild(staff_t)
 allow staff_screen_t portage_ebuild_t:dir search;
 allow utempter_t sysadm_t:udp_socket { read write };
+
+# --- what enforcement would actually hit in the critical paths ---
+#
+# These came from scanning for denials whose SUBJECT is a critical service -
+# the lockout-risk question rather than the noise question.
+#
+# sudo (staff_sudo_t) only ever trips the inherited-fd class, which this file
+# already dontaudits for other domains: informational, the transition is not
+# blocked, so dontaudit is the right treatment rather than a grant. Plus a
+# statfs on /proc.
+dontaudit staff_sudo_t chkpwd_t:process { noatsecure rlimitinh siginh };
+dontaudit staff_sudo_t sysadm_t:process { noatsecure rlimitinh siginh };
+kernel_getattr_proc(staff_sudo_t)
+
+# sshd is how this box is reached remotely, so these two are lockout-relevant
+# even though there are only two denials each in the whole log: sshd reading
+# openrc's script state, and a file under /run.
+init_read_script_status_files(sshd_t)
+allow sshd_t var_run_t:file read;
+
+# logind watches a cgroup file (fs_watch_cgroup_files is the interface for it).
+fs_watch_cgroup_files(systemd_logind_t)
 
 # dhcpcd-run-hook searches the init runtime directory; refpolicy has no search
 # interface for it (only create/delete/dontaudit), so this is a raw allow.
