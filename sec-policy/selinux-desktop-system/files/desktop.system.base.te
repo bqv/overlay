@@ -1,0 +1,166 @@
+policy_module(desktop.system.base, 1.0)
+
+gen_require(`
+  attribute domain;
+  type initrc_state_t;
+  type dhcpc_t;
+  type kmod_t;
+  type sshd_t;
+  type cgroup_t;
+  type system_dbusd_t;
+  type dhcpc_script_t;
+  type rtkit_daemon_t;
+  type xauth_t;
+  type staff_dbusd_t;
+  type chkpwd_t;
+  type sysadm_t;
+  type systemd_logind_t;
+  type policykit_t;
+  type sysadm_screen_t;
+  type staff_t;
+  type portage_fetch_t;
+  type setfiles_t;
+  type semanage_store_t;
+  type selinux_config_t;
+  type shutdown_t;
+  type shutdown_exec_t;
+  type file_context_t;
+  type load_policy_t;
+  type ldconfig_t;
+  type portage_sandbox_t;
+  type semanage_t;
+  type portage_t;
+  type policy_config_t;
+  type proc_psi_t;
+  type utempter_t;
+  type dmesg_t;
+  type mount_t;
+  type tmpfiles_t;
+  type udev_t;
+  type fsadm_t;
+  class filesystem getattr;
+  class process { getcap noatsecure rlimitinh siginh transition };
+  class fd use;
+  class file { create getattr map open read unlink write relabelfrom relabelto };
+  class dir { create getattr open read search relabelfrom relabelto };
+  class capability { dac_override net_admin };
+  class unix_dgram_socket sendto;
+  class tcp_socket name_bind;
+')
+
+kernel_getattr_proc(chkpwd_t)
+kernel_read_kernel_sysctls(chkpwd_t)
+
+kernel_read_kernel_sysctls(dhcpc_script_t)
+nscd_read_runtime_files(dhcpc_script_t)
+selinux_getattr_fs(dhcpc_script_t)
+seutil_search_default_contexts(dhcpc_script_t)
+
+dontaudit dhcpc_t dhcpc_script_t:process { noatsecure rlimitinh siginh };
+corenet_sendrecv_unlabeled_packets(dhcpc_t) # until secmarked
+
+term_read_console(dmesg_t)
+
+files_read_default_files(fsadm_t)
+
+dev_rw_generic_chr_files(mount_t)
+
+files_getattr_default_dirs(portage_fetch_t)
+corenet_sendrecv_http_client_packets(portage_t) # binhosts
+corenet_sendrecv_http_client_packets(portage_sandbox_t)
+corenet_tcp_bind_generic_node(portage_t)
+corenet_udp_bind_generic_node(portage_t)
+
+sysadm_use_fds(portage_sandbox_t)
+
+fs_list_tmpfs(kmod_t)
+
+selinux_getattr_fs(policykit_t)
+seutil_search_default_contexts(policykit_t)
+
+systemd_read_logind_state(proc_psi_t)
+
+allow semanage_t cgroup_t:filesystem getattr;
+allow semanage_t file_context_t:file { relabelfrom relabelto };
+allow semanage_t load_policy_t:process { noatsecure rlimitinh siginh };
+allow semanage_t policy_config_t:file relabelfrom;
+allow semanage_t selinux_config_t:file { relabelfrom relabelto };
+allow semanage_t semanage_store_t:dir { relabelfrom relabelto };
+allow semanage_t semanage_store_t:file { relabelfrom relabelto };
+allow semanage_t setfiles_t:process { noatsecure rlimitinh siginh };
+dev_getattr_fs(semanage_t)
+dev_read_sysfs(semanage_t)
+fs_getattr_pstorefs(semanage_t)
+fs_getattr_tmpfs(semanage_t)
+fs_getattr_xattr_fs(semanage_t)
+kernel_getattr_debugfs(semanage_t)
+kernel_getattr_proc(semanage_t)
+kernel_read_vm_overcommit_sysctl(semanage_t)
+seutil_relabelto_bin_policy(semanage_t)
+term_getattr_pty_fs(semanage_t)
+
+kernel_getattr_proc(setfiles_t)
+kernel_read_unlabeled_state(setfiles_t)
+term_read_console(setfiles_t)
+
+allow shutdown_t shutdown_exec_t:file execute_no_trans;
+
+dontaudit sshd_t chkpwd_t:process { noatsecure rlimitinh siginh };
+allow sshd_t initrc_state_t:dir read;
+#!!!! This avc can be allowed using the boolean 'allow_polyinstantiation'
+allow sshd_t self:capability dac_override;
+allow sshd_t self:capability net_admin;
+allow sshd_t self:process getcap;
+dontaudit sshd_t staff_t:process { noatsecure rlimitinh siginh };
+dontaudit sshd_t sysadm_t:process { noatsecure rlimitinh siginh };
+auth_tunable_read_shadow(sshd_t)
+#corenet_sendrecv_unlabeled_packets(staff_t) # mosh - udp port 60001
+kernel_getattr_proc(sshd_t)
+libs_exec_lib_files(sshd_t)
+
+allow domain staff_t:fifo_file rw_inherited_fifo_file_perms;
+
+allow staff_dbusd_t self:process getcap;
+dontaudit staff_dbusd_t staff_t:process { noatsecure rlimitinh siginh };
+
+files_search_default(sysadm_screen_t)
+
+allow sysadm_t domain:process { getcap }; # htop
+dontaudit sysadm_t ldconfig_t:process { noatsecure rlimitinh siginh };
+dontaudit sysadm_t portage_fetch_t:process { noatsecure rlimitinh siginh };
+allow sysadm_t portage_sandbox_t:process { transition };
+dontaudit sysadm_t portage_sandbox_t:process { noatsecure rlimitinh siginh };
+dontaudit sysadm_t portage_t:process { noatsecure rlimitinh siginh };
+dontaudit sysadm_t semanage_t:process { noatsecure rlimitinh siginh };
+dontaudit sysadm_t setfiles_t:process { noatsecure rlimitinh siginh };
+dontaudit sysadm_t sysadm_screen_t:process { noatsecure rlimitinh siginh };
+allow sysadm_t unlabeled_t:process getattr;
+corenet_tcp_bind_generic_node(sysadm_t)
+kernel_read_unlabeled_files(sysadm_t) # htop / proc
+kernel_manage_unlabeled_symlinks(sysadm_t) # htop / proc
+
+dontaudit system_dbusd_t policykit_t:process { noatsecure rlimitinh siginh };
+dontaudit system_dbusd_t rtkit_daemon_t:process { noatsecure rlimitinh siginh };
+dontaudit system_dbusd_t systemd_logind_t:process { noatsecure rlimitinh siginh };
+dev_rw_dri(system_dbusd_t)
+dev_rw_input_dev(system_dbusd_t)
+
+allow systemd_logind_t self:capability net_admin;
+allow systemd_logind_t staff_t:fd use;
+kernel_getattr_proc(systemd_logind_t)
+ssh_use_sshd_pidfds(systemd_logind_t)
+xserver_use_xdm_fds(systemd_logind_t)
+
+init_use_fds(tmpfiles_t)
+kernel_read_kernel_sysctls(tmpfiles_t)
+kernel_read_unlabeled_state(tmpfiles_t)
+term_use_console(tmpfiles_t)
+
+allow udev_t self:capability2 perfmon;
+
+allow utempter_t staff_t:udp_socket { read write };
+allow utempter_t sysadm_t:udp_socket { read write };
+term_use_ptmx(utempter_t)
+
+fs_getattr_tmpfs(xauth_t)
+userdom_manage_user_tmp_files(xauth_t)

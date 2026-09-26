@@ -1,0 +1,42 @@
+policy_module(desktop.system.mosh, 1.0.0)
+
+gen_require(`
+	role staff_r;
+	type staff_t;
+')
+
+########################################
+#
+# Declarations
+#
+
+type mosh_t;
+type mosh_exec_t;
+application_domain(mosh_t, mosh_exec_t)
+
+type mosh_client_t;
+type mosh_client_exec_t;
+application_domain(mosh_client_t, mosh_client_exec_t)
+
+type mosh_server_t;
+type mosh_server_exec_t;
+application_domain(mosh_server_t, mosh_server_exec_t)
+
+########################################
+#
+# mosh_server script local policy
+#
+
+mosh_domtrans(staff_t)
+mosh_server_domtrans(staff_t)
+mosh_client_domtrans(mosh_t)
+role staff_r types mosh_t;
+role staff_r types mosh_server_t;
+role staff_r types mosh_client_t;
+
+domain_use_interactive_fds(mosh_t)
+files_read_etc_files(mosh_t)
+miscfiles_read_localization(mosh_client_t)
+
+corenet_sendrecv_unlabeled_packets(staff_t)
+

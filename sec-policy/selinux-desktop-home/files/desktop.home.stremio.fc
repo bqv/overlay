@@ -1,0 +1,1 @@
+HOME_DIR/\.local/bin/stremio-server		--	gen_context(staff_u:object_r:stremio_server_exec_t,s0)

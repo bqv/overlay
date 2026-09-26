@@ -1,0 +1,149 @@
+policy_module(desktop.home.stremio, 1.0.0)
+
+gen_require(`
+	role staff_r;
+	type staff_t;
+	type staff_dbusd_t;
+	type staff_sudo_t;
+	type pipewire_t;
+	type rtkit_daemon_t;
+	type devicekit_power_t;
+	type system_dbusd_t;
+	type getty_t;
+	type auditd_t;
+	type udev_t;
+	type shortwave_t;
+	type systemd_logind_t;
+	type sshd_t;
+	type mozilla_t;
+	type ssh_t;
+	type sysadm_t;
+	type staff_t;
+	type xserver_t;
+	type staff_screen_t;
+	type unreserved_port_t;
+	type dhcpc_t;
+	type policykit_t;
+	type wireplumber_t;
+	class process { getcap getsched noatsecure rlimitinh siginh sigkill };
+	class tcp_socket { accept connect create getopt name_connect read setopt shutdown write };
+	class cap_userns sys_ptrace;
+	class udp_socket { bind connect create getattr read setopt write };
+	class fifo_file { read write };
+	class dir { getattr open read search };
+	class file { getattr open read };
+')
+
+########################################
+#
+# Declarations
+#
+
+type stremio_server_t;
+type stremio_server_exec_t;
+init_daemon_domain(stremio_server_t, stremio_server_exec_t)
+
+########################################
+#
+# stremio_server script local policy
+#
+
+
+domain_use_interactive_fds(stremio_server_t)
+files_read_etc_files(stremio_server_t)
+miscfiles_read_localization(stremio_server_t)
+
+stremio_server_domtrans(staff_t)
+role staff_r types stremio_server_t;
+
+allow stremio_server_t auditd_t:dir { getattr search };
+allow stremio_server_t auditd_t:file { open read };
+allow stremio_server_t cgroup_t:file read;
+allow stremio_server_t devicekit_power_t:dir { getattr search };
+allow stremio_server_t devicekit_power_t:file { open read };
+allow stremio_server_t dhcpc_t:dir { getattr search };
+allow stremio_server_t dhcpc_t:file { open read };
+allow stremio_server_t getty_t:dir { getattr search };
+allow stremio_server_t getty_t:file { open read };
+allow stremio_server_t mozilla_t:dir { getattr search };
+allow stremio_server_t mozilla_t:file { open read };
+allow stremio_server_t pipewire_t:dir { getattr search };
+allow stremio_server_t pipewire_t:file { open read };
+allow stremio_server_t policykit_t:dir { getattr search };
+allow stremio_server_t policykit_t:file { open read };
+allow stremio_server_t rtkit_daemon_t:dir { getattr search };
+allow stremio_server_t rtkit_daemon_t:file { open read };
+allow stremio_server_t self:anon_inode { create map read write };
+allow stremio_server_t self:cap_userns sys_ptrace;
+allow stremio_server_t self:fifo_file { read write };
+allow stremio_server_t self:netlink_route_socket { bind create getattr nlmsg_read read write };
+allow stremio_server_t self:process { getsched sigkill signal };
+allow stremio_server_t self:process { execmem };
+allow stremio_server_t self:tcp_socket { accept bind connect create getattr getopt listen read setopt shutdown write };
+allow stremio_server_t self:udp_socket { bind create getattr read setopt write };
+allow stremio_server_t shortwave_t:dir { getattr search };
+allow stremio_server_t shortwave_t:file { open read };
+allow stremio_server_t ssh_t:dir { getattr search };
+allow stremio_server_t ssh_t:file { open read };
+allow stremio_server_t sshd_t:dir { getattr search };
+allow stremio_server_t sshd_t:file { open read };
+allow stremio_server_t staff_dbusd_t:dir { getattr search };
+allow stremio_server_t staff_dbusd_t:file { open read };
+allow stremio_server_t staff_screen_t:dir { getattr search };
+allow stremio_server_t staff_screen_t:file { open read };
+allow stremio_server_t staff_sudo_t:dir { getattr search };
+allow stremio_server_t staff_sudo_t:file { open read };
+allow stremio_server_t staff_t:dir { getattr search };
+allow stremio_server_t staff_t:file { open read };
+allow stremio_server_t sysadm_t:dir { getattr search };
+allow stremio_server_t sysadm_t:file { open read };
+allow stremio_server_t system_dbusd_t:dir { getattr search };
+allow stremio_server_t system_dbusd_t:file { open read };
+allow stremio_server_t systemd_logind_t:dir { getattr search };
+allow stremio_server_t systemd_logind_t:file { open read };
+allow stremio_server_t udev_t:dir { getattr search };
+allow stremio_server_t unreserved_port_t:tcp_socket { name_bind name_connect };
+allow stremio_server_t wireplumber_t:dir { getattr search };
+allow stremio_server_t wireplumber_t:file { open read };
+allow stremio_server_t xserver_t:dir { getattr search };
+corecmd_exec_bin(stremio_server_t)
+corecmd_exec_shell(stremio_server_t)
+corecmd_search_bin(stremio_server_t)
+corenet_sendrecv_unlabeled_packets(stremio_server_t)
+corenet_tcp_bind_generic_node(stremio_server_t)
+corenet_tcp_connect_hplip_port(stremio_server_t)
+corenet_tcp_connect_inetd_child_port(stremio_server_t)
+corenet_tcp_connect_rtorrent_port(stremio_server_t)
+corenet_udp_bind_generic_node(stremio_server_t)
+corenet_udp_bind_howl_port(stremio_server_t)
+dev_list_sysfs(stremio_server_t)
+dev_read_sysfs(stremio_server_t)
+files_search_home(stremio_server_t)
+fs_create_cgroup_files(stremio_server_t)
+fs_getattr_xattr_fs(stremio_server_t)
+fs_read_cgroup_symlinks(stremio_server_t)
+init_read_script_state(stremio_server_t)
+init_read_state(stremio_server_t)
+kernel_list_proc(stremio_server_t)
+kernel_read_kernel_sysctls(stremio_server_t)
+kernel_read_state(stremio_server_t)
+kernel_read_system_state(stremio_server_t)
+kernel_read_vm_overcommit_sysctl(stremio_server_t)
+locallogin_read_state(stremio_server_t)
+miscfiles_search_generic_cert_dirs(stremio_server_t)
+miscfiles_read_generic_certs(stremio_server_t)
+networkmanager_read_state(stremio_server_t)
+nscd_read_runtime_files(stremio_server_t)
+sysnet_read_config(stremio_server_t)
+udev_read_state(stremio_server_t)
+userdom_exec_user_bin_files(stremio_server_t)
+userdom_manage_user_home_content_dirs(stremio_server_t)
+userdom_manage_user_home_content_files(stremio_server_t)
+userdom_search_user_home_dirs(stremio_server_t)
+userdom_use_user_ptys(stremio_server_t)
+xdg_read_data_files(stremio_server_t)
+xdg_search_config_dirs(stremio_server_t)
+xdg_search_data_dirs(stremio_server_t)
+xserver_read_state(stremio_server_t)
+xserver_read_xdm_state(stremio_server_t)
+xserver_use_xdm_fds(stremio_server_t)

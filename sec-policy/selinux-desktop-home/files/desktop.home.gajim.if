@@ -1,0 +1,96 @@
+
+## <summary>policy for gajim</summary>
+
+########################################
+## <summary>
+##	Execute gajim_exec_t in the gajim domain.
+## </summary>
+## <param name="domain">
+## <summary>
+##	Domain allowed to transition.
+## </summary>
+## </param>
+#
+interface(`gajim_domtrans',`
+	gen_require(`
+		type gajim_t, gajim_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	domtrans_pattern($1, gajim_exec_t, gajim_t)
+	allow $1 gajim_t:process { noatsecure }
+')
+
+######################################
+## <summary>
+##	Execute gajim in the caller domain.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed access.
+##	</summary>
+## </param>
+#
+interface(`gajim_exec',`
+	gen_require(`
+		type gajim_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	can_exec($1, gajim_exec_t)
+')
+
+########################################
+## <summary>
+##	Execute gajim in the gajim domain, and
+##	allow the specified role the gajim domain.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed to transition
+##	</summary>
+## </param>
+## <param name="role">
+##	<summary>
+##	The role to be allowed the gajim domain.
+##	</summary>
+## </param>
+#
+interface(`gajim_run',`
+	gen_require(`
+		type gajim_t;
+		attribute_role gajim_roles;
+	')
+
+	gajim_domtrans($1)
+	roleattribute $2 gajim_roles;
+')
+
+########################################
+## <summary>
+##	Role access for gajim
+## </summary>
+## <param name="role">
+##	<summary>
+##	Role allowed access
+##	</summary>
+## </param>
+## <param name="domain">
+##	<summary>
+##	User domain for the role
+##	</summary>
+## </param>
+#
+interface(`gajim_role',`
+	gen_require(`
+		type gajim_t;
+		attribute_role gajim_roles;
+	')
+
+	roleattribute $1 gajim_roles;
+
+	gajim_domtrans($2)
+
+	ps_process_pattern($2, gajim_t)
+	allow $2 gajim_t:process { signull signal sigkill };
+')

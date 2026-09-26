@@ -1,0 +1,17 @@
+# editor leftovers
+*.swp
+*.swo
+*~
+
+# overlay build artifacts
+/packages/
+/distfiles/
+/metadata/md5-cache/
+/metadata/cache/
+
+# raw AVC evidence: kept on disk, out of history
+/sec-policy/captures/*
+!/sec-policy/captures/README.md
+
+# pristine upstream refpolicy, reference only - pinned in sec-policy/README.md
+/sec-policy/refpolicy/

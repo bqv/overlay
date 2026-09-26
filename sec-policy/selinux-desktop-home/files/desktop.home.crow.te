@@ -1,0 +1,121 @@
+policy_module(desktop.home.crow, 1.0.0)
+
+gen_require(`
+	role staff_r;
+	type staff_t;
+	type xdg_config_t;
+	type staff_dbusd_t;
+	type tmpfs_t;
+	type cgroup_t;
+	type unreserved_port_t;
+	type screen_tmp_t;
+	type v4l_device_t;
+	type tmp_t;
+	type xserver_t;
+	type user_tmp_t;
+	type xserver_tmpfs_t;
+	type mount_runtime_t;
+	type var_lib_t;
+	type xauth_tmp_t;
+	type xdg_data_t;
+	class process { getcap getsched };
+	class udp_socket { connect create getattr read setopt write };
+	class file { create execute getattr link map open read relabelto unlink watch write };
+	class dir { add_name create getattr open read relabelto remove_name search watch write };
+	class unix_dgram_socket { connect create sendto };
+	class netlink_route_socket { bind create getattr getopt nlmsg_read read setopt write };
+	class shm { create destroy read unix_read unix_write write };
+	class tcp_socket { connect create getattr getopt name_connect read setopt shutdown write };
+	class fd use;
+	class chr_file { getattr ioctl open read write };
+	class unix_stream_socket connectto;
+')
+
+########################################
+#
+# Declarations
+#
+
+attribute_role crow_roles;
+roleattribute system_r crow_roles;
+
+type crow_t;
+type crow_exec_t;
+application_domain(crow_t, crow_exec_t)
+role crow_roles types crow_t;
+role staff_r types crow_t;
+
+########################################
+#
+# crow local policy
+#
+
+allow crow_t device_t:chr_file { getattr ioctl map open read setattr write };
+allow crow_t self:fifo_file { read write };
+allow crow_t self:netlink_route_socket { bind create getattr getopt nlmsg_read read setopt write };
+allow crow_t self:process { getsched setsched signull };
+allow staff_t crow_t:process { getpgid rlimitinh siginh ptrace };
+allow staff_t crow_t:dir search;
+allow staff_t crow_t:file { open getattr map read write };
+allow staff_t crow_t:lnk_file read;
+allow crow_t self:shm { create destroy read unix_read unix_write write };
+allow crow_t self:unix_dgram_socket { connect create };
+allow crow_t staff_dbusd_t:unix_stream_socket connectto;
+allow crow_t staff_t:dir search;
+allow crow_t staff_t:file read;
+allow crow_t staff_t:lnk_file { getattr read };
+allow crow_t tmpfs_t:file { create getattr link map open read unlink write };
+allow crow_t user_runtime_t:dir { search open read getattr };
+allow crow_t user_runtime_t:sock_file { read write getattr };
+allow crow_t xserver_t:fd use;
+allow crow_t xserver_tmpfs_t:file { map read write };
+corecmd_exec_bin(crow_t)
+corecmd_search_bin(crow_t)
+corecmd_shell_entry_type(crow_t)
+corenet_tcp_connect_http_port(crow_t)
+dbus_read_lib_files(crow_t)
+dbus_rw_session_tmp_sockets(crow_t)
+dbus_system_bus_client(crow_t)
+dbus_all_session_bus_client(crow_t)
+dbus_connect_all_session_bus(crow_t)
+dev_filetrans_vsock_dev(crow_t)
+dev_list_sysfs(crow_t)
+dev_manage_generic_symlinks(crow_t)
+dev_read_sysfs(crow_t)
+dev_rw_dri(crow_t)
+files_mmap_read_usr_files(crow_t)
+files_read_etc_runtime_files(crow_t)
+files_read_var_lib_files(crow_t)
+files_read_var_lib_symlinks(crow_t)
+files_rw_generic_tmp_sockets(crow_t)
+files_search_home(crow_t)
+files_search_tmp(crow_t)
+files_search_var_lib(crow_t)
+fs_getattr_nsfs_files(crow_t)
+fs_manage_tmpfs_dirs(crow_t)
+kernel_read_system_state(crow_t)
+miscfiles_read_generic_certs(crow_t)
+nscd_read_runtime_files(crow_t)
+selinux_getattr_fs(crow_t)
+selinux_search_fs(crow_t)
+seutil_search_default_contexts(crow_t)
+sysnet_read_config(crow_t)
+userdom_search_user_home_dirs(crow_t)
+userdom_search_user_runtime(crow_t)
+userdom_search_user_runtime_root(crow_t)
+userdom_use_user_ptys(crow_t)
+xdg_manage_cache(crow_t)
+xdg_search_config_dirs(crow_t)
+xdg_search_data_dirs(crow_t)
+xserver_read_user_xauth(crow_t)
+xserver_rw_mesa_shader_cache(crow_t)
+xserver_stream_connect(crow_t)
+
+domain_use_interactive_fds(crow_t)
+files_read_etc_files(crow_t)
+miscfiles_read_localization(crow_t)
+
+crow_domtrans(staff_t, staff_r);
+crow_exec(staff_t);
+
+#============= crow_t ==============

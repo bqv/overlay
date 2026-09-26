@@ -1,0 +1,104 @@
+policy_module(desktop.home.shortwave, 1.0.0)
+
+gen_require(`
+	role staff_r;
+	type staff_t;
+	type staff_dbusd_t;
+	type cgroup_t;
+	type tmpfs_t;
+	type unreserved_port_t;
+	type user_tmp_t;
+	type v4l_device_t;
+	type var_lib_t;
+	type xserver_t;
+	type xserver_tmpfs_t;
+')
+
+########################################
+#
+# Declarations
+#
+
+attribute_role shortwave_roles;
+roleattribute system_r shortwave_roles;
+
+type shortwave_t;
+type shortwave_exec_t;
+application_domain(shortwave_t, shortwave_exec_t)
+role shortwave_roles types shortwave_t;
+
+########################################
+#
+# shortwave local policy
+#
+allow shortwave_t self:capability { setgid setuid };
+allow shortwave_t self:process { fork setpgid setrlimit signal_perms };
+
+allow shortwave_t self:fifo_file manage_fifo_file_perms;
+allow shortwave_t self:unix_stream_socket create_stream_socket_perms;
+
+domain_use_interactive_fds(shortwave_t)
+files_read_etc_files(shortwave_t)
+auth_use_nsswitch(shortwave_t)
+miscfiles_read_localization(shortwave_t)
+sysnet_dns_name_resolve(shortwave_t)
+
+shortwave_run(staff_t, staff_r)
+shortwave_run(staff_dbusd_t, staff_r)
+
+allow shortwave_t cgroup_t:file { getattr open read };
+allow shortwave_t self:process getsched;
+allow shortwave_t self:shm { create destroy read unix_read unix_write write };
+allow shortwave_t self:unix_dgram_socket { connect create ioctl };
+allow shortwave_t staff_dbusd_t:unix_stream_socket connectto;
+allow shortwave_t tmpfs_t:file { execute map read write };
+allow shortwave_t unreserved_port_t:udp_socket name_bind;
+allow shortwave_t user_runtime_t:sock_file write;
+allow shortwave_t user_tmp_t:file { map open read write };
+allow shortwave_t v4l_device_t:chr_file { getattr ioctl open read write };
+allow shortwave_t var_lib_t:file { getattr map open read };
+allow shortwave_t xserver_t:fd use;
+allow shortwave_t xserver_t:unix_dgram_socket sendto;
+allow shortwave_t xserver_tmpfs_t:file { map read write };
+corecmd_exec_bin(shortwave_t)
+corecmd_search_bin(shortwave_t)
+corenet_sendrecv_http_client_packets(shortwave_t)
+corenet_sendrecv_unlabeled_packets(shortwave_t) # port 5353
+corenet_tcp_connect_http_port(shortwave_t)
+corenet_udp_bind_generic_node(shortwave_t)
+corenet_udp_bind_howl_port(shortwave_t)
+dbus_list_system_bus_runtime(shortwave_t)
+dbus_rw_session_tmp_sockets(shortwave_t)
+dbus_send_system_bus(shortwave_t)
+dbus_system_bus_client(shortwave_t)
+dev_ioctl_dri_dev(shortwave_t)
+dev_read_sysfs(shortwave_t)
+dev_rw_dri(shortwave_t)
+files_list_usr(shortwave_t)
+files_manage_generic_tmp_dirs(shortwave_t)
+files_manage_generic_tmp_files(shortwave_t)
+files_mmap_read_usr_files(shortwave_t)
+files_read_etc_runtime_files(shortwave_t)
+fs_getattr_xattr_fs(shortwave_t)
+fs_list_tmpfs(shortwave_t)
+fs_read_cgroup_symlinks(shortwave_t)
+kernel_read_system_state(shortwave_t)
+miscfiles_manage_fonts(shortwave_t)
+miscfiles_manage_fonts_cache(shortwave_t)
+miscfiles_read_fonts(shortwave_t)
+pipewire_play(shortwave_t)
+selinux_getattr_fs(shortwave_t)
+seutil_search_default_contexts(shortwave_t)
+userdom_list_user_tmp(shortwave_t)
+userdom_search_user_runtime(shortwave_t)
+userdom_search_user_runtime_root(shortwave_t)
+userdom_use_user_ttys(shortwave_t)
+userdom_use_inherited_user_terminals(shortwave_t)
+xdg_manage_cache(shortwave_t)
+xdg_manage_data(shortwave_t)
+xdg_read_config_files(shortwave_t)
+xdg_search_config_dirs(shortwave_t)
+xserver_read_user_xauth(shortwave_t)
+xserver_stream_connect(shortwave_t)
+xserver_use_user_fonts(shortwave_t)
+#xserver_use_xdm_fds(shortwave_t)

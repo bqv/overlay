@@ -1,0 +1,2 @@
+/usr/bin/mosh-server		--	gen_context(system_u:object_r:mosh_server_exec_t,s0)
+/usr/bin/mosh-client		--	gen_context(system_u:object_r:mosh_client_exec_t,s0)

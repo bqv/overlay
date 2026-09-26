@@ -1,0 +1,169 @@
+policy_module(desktop.home.pipewire, 1.0)
+
+gen_require(`
+    role staff_r;
+	type staff_t;
+	type user_runtime_t;
+	type sysadm_t;
+	type pulseaudio_tmp_t;
+	type tmpfs_t;
+	type sound_device_t;
+	type staff_dbusd_t;
+	type systemd_logind_runtime_t;
+	type rtkit_daemon_t;
+	class process { getcap getsched noatsecure rlimitinh setsched siginh };
+	class file { create getattr lock map open read relabelto write };
+	class dir { add_name getattr read relabelto search watch };
+	class unix_stream_socket connectto;
+	class capability sys_ptrace;
+	class fifo_file { read write };
+	class sock_file { create setattr write };
+	class lnk_file read;
+	class chr_file { ioctl map open read write };
+	class netlink_kobject_uevent_socket { bind create getattr getopt read setopt };
+	class fd use;
+')
+
+########################################
+#
+# Declarations
+#
+
+type pipewire_t;
+type pipewire_exec_t;
+domain_type(pipewire_t)
+domain_entry_file(pipewire_t, pipewire_exec_t)
+role staff_r types pipewire_t;
+
+type wireplumber_t;
+type wireplumber_exec_t;
+domain_type(wireplumber_t)
+domain_entry_file(wireplumber_t, wireplumber_exec_t)
+role staff_r types wireplumber_t;
+
+########################################
+#
+# pipewire local policy
+#
+
+optional_policy(`
+	dbus_system_domain(pipewire_t, pipewire_exec_t)
+')
+
+domain_use_interactive_fds(pipewire_t)
+files_read_etc_files(pipewire_t)
+miscfiles_read_localization(pipewire_t)
+
+########################################
+#
+# wireplumber local policy
+#
+
+optional_policy(`
+	dbus_system_domain(wireplumber_t, wireplumber_exec_t)
+')
+
+domain_use_interactive_fds(wireplumber_t)
+files_read_etc_files(wireplumber_t)
+miscfiles_read_localization(wireplumber_t)
+
+########################################
+
+#pipewire_exec(sysadm_t)
+#wireplumber_exec(sysadm_t)
+pipewire_exec(staff_t)
+pipewire_domtrans(staff_t)
+wireplumber_exec(staff_t)
+wireplumber_domtrans(staff_t)
+
+########################################
+
+allow pipewire_t pulseaudio_tmp_t:dir { add_name getattr search };
+allow pipewire_t pulseaudio_tmp_t:file { create getattr open write };
+allow pipewire_t pulseaudio_tmp_t:sock_file { create setattr };
+allow pipewire_t self:fifo_file { read write };
+allow pipewire_t self:process { getsched setsched };
+allow pipewire_t self:unix_stream_socket connectto;
+allow pipewire_t sound_device_t:chr_file { ioctl map open read write };
+allow pipewire_t staff_dbusd_t:unix_stream_socket connectto;
+allow pipewire_t tmpfs_t:file { getattr map read write };
+allow pipewire_t user_runtime_t:file { create lock open read };
+allow pipewire_t user_runtime_t:sock_file { create write };
+allow pipewire_t wireplumber_t:dir search;
+allow pipewire_t wireplumber_t:file read;
+allow pipewire_t wireplumber_t:lnk_file read;
+alsa_read_config(pipewire_t)
+alsa_read_lib(pipewire_t)
+corecmd_exec_bin(pipewire_t)
+corecmd_search_bin(pipewire_t)
+dev_read_sysfs(pipewire_t)
+files_mmap_read_usr_files(pipewire_t)
+files_read_etc_runtime_files(pipewire_t)
+files_search_home(pipewire_t)
+files_search_tmp(pipewire_t)
+kernel_request_load_module(pipewire_t)
+nscd_read_runtime_files(pipewire_t)
+rtkit_daemon_dbus_chat(pipewire_t)
+selinux_getattr_fs(pipewire_t)
+seutil_search_default_contexts(pipewire_t)
+userdom_manage_user_runtime_dirs(pipewire_t)
+userdom_search_user_home_dirs(pipewire_t)
+userdom_search_user_runtime_root(pipewire_t)
+userdom_use_user_ptys(pipewire_t)
+xdg_search_config_dirs(pipewire_t)
+xserver_read_user_xauth(pipewire_t)
+xserver_stream_connect(pipewire_t)
+
+rtkit_daemon_dbus_chat(rtkit_daemon_t)
+rtkit_scheduled(rtkit_daemon_t)
+
+allow staff_t pipewire_t:dir read;
+dontaudit staff_t pipewire_t:process { noatsecure rlimitinh siginh };
+allow staff_t pipewire_t:unix_stream_socket connectto;
+allow staff_t user_runtime_t:sock_file write;
+allow staff_t wireplumber_t:dir read;
+dontaudit staff_t wireplumber_t:process { noatsecure rlimitinh siginh };
+
+allow wireplumber_t pipewire_t:fd use;
+allow wireplumber_t pipewire_t:unix_stream_socket connectto;
+allow wireplumber_t self:fifo_file { read write };
+allow wireplumber_t self:netlink_kobject_uevent_socket { bind create getattr getopt read setopt };
+allow wireplumber_t self:process { getsched setsched };
+allow wireplumber_t sound_device_t:chr_file { ioctl map open read write };
+allow wireplumber_t staff_dbusd_t:unix_stream_socket connectto;
+allow wireplumber_t systemd_logind_runtime_t:dir { read watch };
+allow wireplumber_t tmpfs_t:file { getattr map read write };
+allow wireplumber_t user_runtime_t:sock_file write;
+alsa_read_config(wireplumber_t)
+alsa_read_lib(wireplumber_t)
+corecmd_exec_bin(wireplumber_t)
+corecmd_search_bin(wireplumber_t)
+dev_getattr_sysfs(wireplumber_t)
+dev_list_sysfs(wireplumber_t)
+dev_read_sysfs(wireplumber_t)
+dev_watch_dev_dirs(wireplumber_t)
+files_list_usr(wireplumber_t)
+files_map_etc_files(wireplumber_t)
+files_mmap_read_usr_files(wireplumber_t)
+files_read_etc_runtime_files(wireplumber_t)
+files_search_home(wireplumber_t)
+files_search_tmp(wireplumber_t)
+init_read_state(wireplumber_t)
+init_search_runtime(wireplumber_t)
+kernel_list_proc(wireplumber_t)
+kernel_read_system_state(wireplumber_t)
+nscd_read_runtime_files(wireplumber_t)
+rtkit_daemon_dbus_chat(wireplumber_t)
+selinux_getattr_fs(wireplumber_t)
+seutil_search_default_contexts(wireplumber_t)
+systemd_read_logind_runtime_files(wireplumber_t)
+udev_read_pid_files(wireplumber_t)
+udev_search_pids(wireplumber_t)
+userdom_search_user_home_dirs(wireplumber_t)
+userdom_search_user_runtime(wireplumber_t)
+userdom_search_user_runtime_root(wireplumber_t)
+userdom_use_user_ptys(wireplumber_t)
+xdg_manage_data(wireplumber_t)
+xdg_search_config_dirs(wireplumber_t)
+xserver_read_user_xauth(wireplumber_t)
+xserver_stream_connect(wireplumber_t)

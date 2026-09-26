@@ -1,0 +1,81 @@
+#!/sbin/nft -f
+flush ruleset
+table inet filter {
+	secmark icmp_server {
+		"system_u:object_r:icmp_packet_t:s0"
+	}
+
+	secmark ssh_server {
+		"system_u:object_r:ssh_server_packet_t:s0"
+	}
+
+	secmark ssh_client {
+		"system_u:object_r:ssh_client_packet_t:s0"
+	}
+
+	secmark http_server {
+		"system_u:object_r:http_server_packet_t:s0"
+	}
+
+	secmark http_client {
+		"system_u:object_r:http_client_packet_t:s0"
+	}
+
+	secmark dns_server {
+		"system_u:object_r:dns_server_packet_t:s0"
+	}
+
+	secmark dns_client {
+		"system_u:object_r:dns_client_packet_t:s0"
+	}
+
+	map secmapping_in {
+		type inet_service : secmark
+			elements = {\
+				22 : "ssh_server",\
+				53 : "dns_client",\
+				80 : "http_server",\
+				443 : "http_server",\
+			}
+	}
+
+	map secmapping_out {
+		type inet_service : secmark
+			elements = {\
+				22 : "ssh_client",\
+				53 : "dns_client",\
+				80 : "http_client",\
+				443 : "http_client",\
+			}
+	}
+
+	chain input {
+		type filter hook input priority -225; policy accept;
+    ct state established,related meta secmark set ct secmark
+		ct state new meta secmark set tcp dport map @secmapping_in
+		ct state new meta secmark set udp dport map @secmapping_in
+    #ct state new ip protocol igmp meta secmark set "igmp_server"
+    ct state new ip protocol icmp meta secmark set "icmp_server"
+    ct state new ip6 nexthdr icmpv6 meta secmark set "icmp_server"
+    iif lo tcp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_server"
+    iif lo udp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_server"
+    iif lo tcp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_server"
+    iif lo udp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_server"
+		ct state new ct secmark set meta secmark
+	}
+
+	chain output {
+		type filter hook output priority 225; policy accept;
+    ct state established,related meta secmark set ct secmark
+    ct state new meta secmark set tcp dport map @secmapping_out
+    ct state new meta secmark set udp dport map @secmapping_out
+    #ct state new ip protocol igmp meta secmark set "igmp_server"
+    ct state new ip protocol icmp meta secmark set "icmp_server"
+    ct state new ip6 nexthdr icmpv6 meta secmark set "icmp_server"
+    oif lo tcp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_client"
+    oif lo udp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_client"
+    oif lo tcp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_client"
+    oif lo udp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_client"
+    ct state new ct secmark set meta secmark
+	}
+}

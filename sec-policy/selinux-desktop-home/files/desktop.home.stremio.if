@@ -1,0 +1,40 @@
+
+## <summary>policy for httpd_stremio_server_script</summary>
+
+########################################
+## <summary>
+##	Execute stremio_server_script_exec_t in the stremio_server_script domain.
+## </summary>
+## <param name="domain">
+## <summary>
+##	Domain allowed to transition.
+## </summary>
+## </param>
+#
+interface(`stremio_server_domtrans',`
+	gen_require(`
+		type stremio_server_t, stremio_server_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	domtrans_pattern($1, stremio_server_exec_t, stremio_server_t)
+')
+
+######################################
+## <summary>
+##	Execute stremio_server_script in the caller domain.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed access.
+##	</summary>
+## </param>
+#
+interface(`stremio_server_exec',`
+	gen_require(`
+		type stremio_server_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	can_exec($1, stremio_server_exec_t)
+')

@@ -1,0 +1,53 @@
+interface(`mosh_domtrans',`
+	gen_require(`
+		type mosh_t, mosh_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	domtrans_pattern($1, mosh_exec_t, mosh_t)
+')
+
+interface(`mosh_exec',`
+	gen_require(`
+		type mosh_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	can_exec($1, mosh_exec_t)
+')
+
+interface(`mosh_server_domtrans',`
+	gen_require(`
+		type mosh_server_t, mosh_server_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	domtrans_pattern($1, mosh_server_exec_t, mosh_server_t)
+')
+
+interface(`mosh_server_exec',`
+	gen_require(`
+		type mosh_server_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	can_exec($1, mosh_server_exec_t)
+')
+
+interface(`mosh_client_domtrans',`
+	gen_require(`
+		type mosh_client_t, mosh_client_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	domtrans_pattern($1, mosh_client_exec_t, mosh_client_t)
+')
+
+interface(`mosh_client_exec',`
+	gen_require(`
+		type mosh_client_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	can_exec($1, mosh_client_exec_t)
+')

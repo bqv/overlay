@@ -1,0 +1,158 @@
+policy_module(desktop.home.gajim, 1.0.0)
+
+gen_require(`
+	role staff_r;
+	type staff_t;
+	type xdg_config_t;
+	type staff_dbusd_t;
+	type tmpfs_t;
+	type cgroup_t;
+	type unreserved_port_t;
+	type screen_tmp_t;
+	type v4l_device_t;
+	type tmp_t;
+	type xserver_t;
+	type user_tmp_t;
+	type xserver_tmpfs_t;
+	type mount_runtime_t;
+	type var_lib_t;
+	type xauth_tmp_t;
+	type xdg_data_t;
+	class process { getcap getsched };
+	class udp_socket { connect create getattr read setopt write };
+	class file { create execute getattr link map open read relabelto unlink watch write };
+	class dir { add_name create getattr open read relabelto remove_name search watch write };
+	class unix_dgram_socket { connect create sendto };
+	class netlink_route_socket { bind create getattr getopt nlmsg_read read setopt write };
+	class shm { create destroy read unix_read unix_write write };
+	class tcp_socket { connect create getattr getopt name_connect read setopt shutdown write };
+	class fd use;
+	class chr_file { getattr ioctl open read write };
+	class unix_stream_socket connectto;
+')
+
+########################################
+#
+# Declarations
+#
+
+attribute_role gajim_roles;
+roleattribute system_r gajim_roles;
+
+type gajim_t;
+type gajim_exec_t;
+application_domain(gajim_t, gajim_exec_t)
+role gajim_roles types gajim_t;
+role staff_r types gajim_t;
+
+########################################
+#
+# gajim local policy
+#
+
+allow gajim_t self:fifo_file manage_fifo_file_perms;
+allow gajim_t self:unix_stream_socket create_stream_socket_perms;
+
+domain_use_interactive_fds(gajim_t)
+files_read_etc_files(gajim_t)
+miscfiles_read_localization(gajim_t)
+
+gajim_domtrans(staff_t, staff_r);
+gajim_exec(staff_t);
+
+#============= gajim_t ==============
+allow gajim_t cgroup_t:file { getattr open read };
+allow gajim_t mount_runtime_t:file { getattr open read watch };
+allow gajim_t screen_tmp_t:dir getattr;
+allow gajim_t self:netlink_route_socket { bind create getattr getopt nlmsg_read read setopt write };
+allow gajim_t self:process getsched;
+allow gajim_t self:shm { create destroy read unix_read unix_write write };
+allow gajim_t self:tcp_socket { connect create getattr getopt read setopt shutdown write };
+allow gajim_t self:udp_socket { connect create getattr read setopt write };
+allow gajim_t self:unix_dgram_socket { connect create };
+allow gajim_t staff_dbusd_t:unix_stream_socket connectto;
+allow gajim_t tmp_t:dir { add_name create getattr open read remove_name search watch write };
+allow gajim_t tmpfs_t:file { create execute getattr link map open read unlink write };
+allow gajim_t unreserved_port_t:tcp_socket name_connect;
+allow gajim_t user_tmp_t:file { getattr map open read write };
+allow gajim_t v4l_device_t:chr_file { getattr ioctl open read write };
+allow gajim_t var_lib_t:file { getattr map open read };
+allow gajim_t xauth_tmp_t:file { getattr open read };
+allow gajim_t xdg_config_t:dir { add_name getattr open read remove_name search watch };
+allow gajim_t xdg_data_t:dir { add_name getattr open read remove_name search watch };
+allow gajim_t xserver_t:fd use;
+allow gajim_t xserver_t:unix_dgram_socket sendto;
+allow gajim_t xserver_tmpfs_t:file { map read write };
+corecmd_exec_bin(gajim_t)
+corecmd_search_bin(gajim_t)
+corenet_sendrecv_dns_client_packets(gajim_t)
+corenet_sendrecv_http_client_packets(gajim_t)
+corenet_sendrecv_unlabeled_packets(gajim_t)
+corenet_tcp_connect_http_port(gajim_t)
+corenet_tcp_connect_jabber_client_port(gajim_t)
+dbus_list_system_bus_runtime(gajim_t)
+dbus_read_lib_files(gajim_t)
+dbus_rw_session_tmp_sockets(gajim_t)
+dbus_send_system_bus(gajim_t)
+dbus_system_bus_client(gajim_t)
+dev_read_sysfs(gajim_t)
+dev_read_urand(gajim_t)
+dev_rw_dri(gajim_t)
+files_list_usr(gajim_t)
+files_list_var_lib(gajim_t)
+files_manage_generic_tmp_files(gajim_t)
+files_mmap_read_usr_files(gajim_t)
+files_read_etc_runtime_files(gajim_t)
+files_search_home(gajim_t)
+files_watch_etc_dirs(gajim_t)
+fs_getattr_xattr_fs(gajim_t)
+fs_manage_tmpfs_dirs(gajim_t)
+fs_read_cgroup_symlinks(gajim_t)
+init_read_script_tmp_files(gajim_t)
+kernel_read_system_state(gajim_t)
+kernel_read_vm_overcommit_sysctl(gajim_t)
+libs_exec_ldconfig(gajim_t)
+miscfiles_manage_fonts(gajim_t)
+miscfiles_manage_fonts_cache(gajim_t)
+miscfiles_read_fonts(gajim_t)
+miscfiles_read_generic_certs(gajim_t)
+miscfiles_search_generic_cert_dirs(gajim_t)
+mount_list_runtime(gajim_t)
+nscd_read_runtime_files(gajim_t)
+sysnet_read_config(gajim_t)
+systemd_dbus_chat_logind(gajim_t)
+userdom_list_user_tmp(gajim_t)
+userdom_manage_user_home_dirs(gajim_t)
+userdom_read_user_home_content_files(gajim_t)
+userdom_search_user_runtime(gajim_t)
+userdom_search_user_runtime_root(gajim_t)
+userdom_use_user_ptys(gajim_t)
+# Interface options:
+#   xdg_create_downloads(gajim_t) # [90]
+#   xdg_create_downloads_home(gajim_t) # [90]
+#   xdg_manage_downloads(gajim_t) # [105]
+#   xdg_manage_downloads_home(gajim_t) # [105]
+xdg_create_downloads(gajim_t)
+# Interface options:
+#   xdg_manage_cache(gajim_t) # [241]
+#   xdg_manage_cache_home(gajim_t) # [241]
+xdg_manage_cache(gajim_t)
+# Interface options:
+#   xdg_manage_config(gajim_t) # [247]
+#   xdg_manage_config_home(gajim_t) # [247]
+xdg_manage_config(gajim_t)
+# Interface options:
+#   xdg_manage_data(gajim_t) # [235]
+#   xdg_manage_data_home(gajim_t) # [235]
+xdg_manage_data(gajim_t)
+# Interface options:
+#   xdg_manage_pictures(gajim_t) # [189]
+#   xdg_manage_pictures_home(gajim_t) # [189]
+#   xdg_read_pictures(gajim_t) # [203]
+#   xdg_read_pictures_home(gajim_t) # [203]
+xdg_manage_pictures(gajim_t)
+xserver_list_xdm_tmp(gajim_t)
+xserver_read_tmp_files(gajim_t)
+xserver_read_user_xauth(gajim_t)
+xserver_stream_connect(gajim_t)
+xserver_use_user_fonts(gajim_t)

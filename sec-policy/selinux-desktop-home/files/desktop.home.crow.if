@@ -1,0 +1,96 @@
+
+## <summary>policy for crow</summary>
+
+########################################
+## <summary>
+##	Execute crow_exec_t in the crow domain.
+## </summary>
+## <param name="domain">
+## <summary>
+##	Domain allowed to transition.
+## </summary>
+## </param>
+#
+interface(`crow_domtrans',`
+	gen_require(`
+		type crow_t, crow_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	domtrans_pattern($1, crow_exec_t, crow_t)
+	allow $1 crow_t:process { noatsecure }
+')
+
+######################################
+## <summary>
+##	Execute crow in the caller domain.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed access.
+##	</summary>
+## </param>
+#
+interface(`crow_exec',`
+	gen_require(`
+		type crow_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	can_exec($1, crow_exec_t)
+')
+
+########################################
+## <summary>
+##	Execute crow in the crow domain, and
+##	allow the specified role the crow domain.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed to transition
+##	</summary>
+## </param>
+## <param name="role">
+##	<summary>
+##	The role to be allowed the crow domain.
+##	</summary>
+## </param>
+#
+interface(`crow_run',`
+	gen_require(`
+		type crow_t;
+		attribute_role crow_roles;
+	')
+
+	crow_domtrans($1)
+	roleattribute $2 crow_roles;
+')
+
+########################################
+## <summary>
+##	Role access for crow
+## </summary>
+## <param name="role">
+##	<summary>
+##	Role allowed access
+##	</summary>
+## </param>
+## <param name="domain">
+##	<summary>
+##	User domain for the role
+##	</summary>
+## </param>
+#
+interface(`crow_role',`
+	gen_require(`
+		type crow_t;
+		attribute_role crow_roles;
+	')
+
+	roleattribute $1 crow_roles;
+
+	crow_domtrans($2)
+
+	ps_process_pattern($2, crow_t)
+	allow $2 crow_t:process { signull signal sigkill };
+')

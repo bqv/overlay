@@ -1,0 +1,80 @@
+
+## <summary>policy for pipewire</summary>
+
+########################################
+## <summary>
+##	Execute pipewire_exec_t in the pipewire domain.
+## </summary>
+## <param name="domain">
+## <summary>
+##	Domain allowed to transition.
+## </summary>
+## </param>
+#
+interface(`pipewire_domtrans',`
+	gen_require(`
+		type pipewire_t, pipewire_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	domtrans_pattern($1, pipewire_exec_t, pipewire_t)
+')
+interface(`wireplumber_domtrans',`
+	gen_require(`
+		type wireplumber_t, wireplumber_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	domtrans_pattern($1, wireplumber_exec_t, wireplumber_t)
+')
+
+######################################
+## <summary>
+##	Execute pipewire in the caller domain.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed access.
+##	</summary>
+## </param>
+#
+interface(`pipewire_exec',`
+	gen_require(`
+		type pipewire_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	can_exec($1, pipewire_exec_t)
+')
+interface(`wireplumber_exec',`
+	gen_require(`
+		type wireplumber_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	can_exec($1, wireplumber_exec_t)
+')
+
+######################################
+
+interface(`pipewire_play',`
+	gen_require(`
+		type pipewire_t;
+		type wireplumber_t;
+		type pulseaudio_tmp_t;
+		type pulseaudio_xdg_config_t;
+	')
+
+	allow pipewire_t $1:dir search;
+	allow pipewire_t $1:file read;
+	allow pipewire_t $1:lnk_file read;
+	allow $1 pipewire_t:unix_stream_socket connectto;
+	allow $1 pulseaudio_tmp_t:dir { getattr open read search };
+	allow $1 pulseaudio_xdg_config_t:dir search;
+	allow $1 pulseaudio_xdg_config_t:file { lock open read };
+
+	allow wireplumber_t $1:dir search;
+	allow wireplumber_t $1:file { getattr open read };
+
+	pulseaudio_stream_connect($1)
+')

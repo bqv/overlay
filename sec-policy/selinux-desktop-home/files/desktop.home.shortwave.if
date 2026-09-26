@@ -1,0 +1,95 @@
+
+## <summary>policy for shortwave</summary>
+
+########################################
+## <summary>
+##	Execute shortwave_exec_t in the shortwave domain.
+## </summary>
+## <param name="domain">
+## <summary>
+##	Domain allowed to transition.
+## </summary>
+## </param>
+#
+interface(`shortwave_domtrans',`
+	gen_require(`
+		type shortwave_t, shortwave_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	domtrans_pattern($1, shortwave_exec_t, shortwave_t)
+')
+
+######################################
+## <summary>
+##	Execute shortwave in the caller domain.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed access.
+##	</summary>
+## </param>
+#
+interface(`shortwave_exec',`
+	gen_require(`
+		type shortwave_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	can_exec($1, shortwave_exec_t)
+')
+
+########################################
+## <summary>
+##	Execute shortwave in the shortwave domain, and
+##	allow the specified role the shortwave domain.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed to transition
+##	</summary>
+## </param>
+## <param name="role">
+##	<summary>
+##	The role to be allowed the shortwave domain.
+##	</summary>
+## </param>
+#
+interface(`shortwave_run',`
+	gen_require(`
+		type shortwave_t;
+		attribute_role shortwave_roles;
+	')
+
+	shortwave_domtrans($1)
+	roleattribute $2 shortwave_roles;
+')
+
+########################################
+## <summary>
+##	Role access for shortwave
+## </summary>
+## <param name="role">
+##	<summary>
+##	Role allowed access
+##	</summary>
+## </param>
+## <param name="domain">
+##	<summary>
+##	User domain for the role
+##	</summary>
+## </param>
+#
+interface(`shortwave_role',`
+	gen_require(`
+		type shortwave_t;
+		attribute_role shortwave_roles;
+	')
+
+	roleattribute $1 shortwave_roles;
+
+	shortwave_domtrans($2)
+
+	ps_process_pattern($2, shortwave_t)
+	allow $2 shortwave_t:process { signull signal sigkill };
+')
