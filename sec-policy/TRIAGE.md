@@ -403,6 +403,12 @@ walking `/proc` under sudo.
   ruleset, so enforcing cannot cut the session on a stale entry.
 - Found the boot-time enforcement behaviour, which is a safety question rather
   than a triage one.
+- Post-merge capture (`captures/2026-09-30-r15-post.audit`) is **3 denials, all
+  `sysadm_t`**: the two deliberate unlabelled off-box packets, and one
+  `sysadm_t -> staff_t:unix_stream_socket { ioctl }` from `sudo git` (admin
+  tooling). `aud`'s draft module offers `corenet_sendrecv_unlabeled_packets(sysadm_t)`
+  for the first pair - **not taken**: that is the blanket this round exists to
+  avoid, and the traffic is unexplained rather than normal.
 - Caught a clobber I introduced: the input chain was re-deriving loopback labels
   from the inbound map, which disagrees with the outbound one. Fixed by labelling
   loopback in the output chain only (`6471f52`); verified with fixed source ports;

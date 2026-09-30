@@ -5,6 +5,7 @@ gen_require(`
 	type staff_t;
 	type sysadm_t;
 	type stremio_server_t;
+	type mozilla_t;
 	type nginx_t;
 	type staff_bubblewrap_t;
 	type dhcpc_t;
@@ -130,6 +131,12 @@ typeattribute local_packet_t packet_type;
 allow sysadm_t local_packet_t:packet { send recv };
 allow staff_t local_packet_t:packet { send recv };
 allow nginx_t local_packet_t:packet { send recv };
+# The browser talks to local services too (the web UI on :80 and the gates on
+# :8080/:8081), and any loopback port no map names is local_packet_t now instead
+# of unlabeled_t - so without this the browser's next receive is denied, which is
+# exactly what the first post-merge window showed. mozilla_t's unlabeled_t grant
+# no longer covers these flows because they are no longer unlabeled.
+allow mozilla_t local_packet_t:packet { send recv };
 
 ###
 ### dhcpcd - DHCPv4 UDP 67/68, DHCPv6 UDP 546/547
