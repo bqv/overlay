@@ -34,6 +34,8 @@ gen_require(`
   type portage_t;
   type policy_config_t;
   type proc_psi_t;
+  type ssh_t;
+  type user_tmpfs_t;
   type utempter_t;
   type dmesg_t;
   type mount_t;
@@ -254,3 +256,27 @@ term_use_ptmx(utempter_t)
 
 fs_getattr_tmpfs(xauth_t)
 userdom_manage_user_tmp_files(xauth_t)
+
+# --- r15: coverage sweep - what is left in the enforcing domains ---
+#
+# A two-hour capture filtered to the *enforcing* domains only (the seven
+# permissive domains and my own census tooling excluded as self-inflicted)
+# leaves just these. Everything else the box produced was already handled.
+
+# ssh allocates a pty for the session. sshd's side was already granted; this is
+# the client, and ssh is how the box is reached remotely - so it matters even
+# at four denials.
+term_use_ptmx(ssh_t)
+# ssh inherited a cwd on the tmpfs mount (~/tmp) and searched it. ssh_t is not
+# permissive, so an ssh started from there is denied without this.
+allow ssh_t user_tmpfs_t:dir search;
+
+# Running the capture tool and the build through sudo: the obstacle is the repo
+# tree being portage_ebuild_t. staff_sudo_t is what a `sudo ./aud` or
+# `sudo make -C <pkg> merge` becomes, so without this the policy cannot be
+# triaged or maintained under enforcing at all.
+portage_read_ebuild(staff_sudo_t)
+allow staff_sudo_t portage_ebuild_t:dir search;
+
+# semodule/semanage asking for its own scheduling class during a merge.
+allow semanage_t self:process getsched;

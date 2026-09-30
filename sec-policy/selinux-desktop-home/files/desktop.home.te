@@ -64,7 +64,7 @@ gen_require(`
   class capability { audit_write dac_override dac_read_search net_admin setuid };
   class netlink_generic_socket { bind create getattr read setopt write };
   class anon_inode { create getattr map read write };
-  class udp_socket read;
+  class udp_socket { read write };
   class io_uring allowed;
   class key create;
   class unix_dgram_socket sendto;
@@ -272,3 +272,9 @@ allow sysadm_t sysadm_screen_t:process { noatsecure rlimitinh siginh };
 allow xauth_t self:unix_dgram_socket create;
 allow local_login_t shadow_t:file read;
 allow local_login_t sysadm_t:process { noatsecure rlimitinh siginh };
+
+# steamwebhelper (Steam's CEF) writes to its own UDP socket bound to the mDNS
+# multicast address 224.0.0.251:5353 - 39 denials in a two-hour window. It is
+# self access on a socket the domain created itself, so it is granted here
+# rather than buried in a dontaudit.
+allow staff_bubblewrap_t self:udp_socket write;

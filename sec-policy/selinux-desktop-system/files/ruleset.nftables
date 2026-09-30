@@ -37,14 +37,36 @@ table inet filter {
 		"system_u:object_r:mdns_packet_t:s0"
 	}
 
+	# loopback traffic no port map classifies - see desktop.system.network.te
+	secmark local {
+		"system_u:object_r:local_packet_t:s0"
+	}
+
+	secmark adb_server {
+		"system_u:object_r:adb_server_packet_t:s0"
+	}
+
+	secmark adb_client {
+		"system_u:object_r:adb_client_packet_t:s0"
+	}
+
+	secmark dhcp_client {
+		"system_u:object_r:dhcpd_client_packet_t:s0"
+	}
+
 	map secmapping_in {
 		type inet_service : secmark
 			elements = {\
 				22 : "ssh_server",\
 				53 : "dns_client",\
+				68 : "dhcp_client",\
 				80 : "http_server",\
 				443 : "http_server",\
+				546 : "dhcp_client",\
 				5353 : "mdns",\
+				5037 : "adb_server",\
+				5554 : "adb_server",\
+				5555 : "adb_server",\
 			}
 	}
 
@@ -53,42 +75,82 @@ table inet filter {
 			elements = {\
 				22 : "ssh_client",\
 				53 : "dns_client",\
+				67 : "dhcp_client",\
+				68 : "dhcp_client",\
 				80 : "http_client",\
 				443 : "http_client",\
-			60001 : "mosh_server",\
-			60002 : "mosh_server",\
-			8080 : "http_client",\
-			5353 : "mdns",\
+				547 : "dhcp_client",\
+				5353 : "mdns",\
+				5037 : "adb_client",\
+				5554 : "adb_client",\
+				5555 : "adb_client",\
+				60001 : "mosh_server",\
+				60002 : "mosh_server",\
+				8080 : "http_client",\
 			}
 	}
 
 	chain input {
 		type filter hook input priority -225; policy accept;
-    ct state established,related meta secmark set ct secmark
+
+		# 1. an established flow keeps the label its conntrack entry remembers
+		ct state established,related meta secmark set ct secmark
+
+		# 2. loopback default. A map hit in step 3 still overrides it, and a map
+		#    lookup with a missing key leaves the value alone, so this gives
+		#    "named label where there is one, local otherwise".
+		iif lo meta secmark set "local"
+
+		# 3. label by port: new flows, and loopback re-checked on every packet
 		ct state new meta secmark set tcp dport map @secmapping_in
 		ct state new meta secmark set udp dport map @secmapping_in
-    #ct state new ip protocol igmp meta secmark set "igmp_server"
-    ct state new ip protocol icmp meta secmark set "icmp_server"
-    ct state new ip6 nexthdr icmpv6 meta secmark set "icmp_server"
-    iif lo tcp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_server"
-    iif lo udp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_server"
-    iif lo tcp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_server"
-    iif lo udp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_server"
+		iif lo meta secmark set tcp dport map @secmapping_in
+		iif lo meta secmark set udp dport map @secmapping_in
+
+		ct state new ip protocol icmp meta secmark set "icmp_server"
+		ct state new ip6 nexthdr icmpv6 meta secmark set "icmp_server"
+
+		iif lo tcp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_server"
+		iif lo udp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_server"
+		iif lo tcp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_server"
+		iif lo udp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_server"
+
+		# 4. repair a flow whose conntrack entry predates these rules. Only the
+		#    direction that opened the flow is re-derived, so a reply packet is
+		#    never given the other side's label. An unmapped port stays as it
+		#    was - unmapped off-box traffic is still left unlabeled on purpose.
+		ct state established,related ct direction original meta secmark set tcp dport map @secmapping_in
+		ct state established,related ct direction original meta secmark set udp dport map @secmapping_in
+		ct state established,related ct direction original ct secmark set meta secmark
+
+		# 5. remember it on the conntrack entry
 		ct state new ct secmark set meta secmark
 	}
 
 	chain output {
 		type filter hook output priority 225; policy accept;
-    ct state established,related meta secmark set ct secmark
-    ct state new meta secmark set tcp dport map @secmapping_out
-    ct state new meta secmark set udp dport map @secmapping_out
-    #ct state new ip protocol igmp meta secmark set "igmp_server"
-    ct state new ip protocol icmp meta secmark set "icmp_server"
-    ct state new ip6 nexthdr icmpv6 meta secmark set "icmp_server"
-    oif lo tcp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_client"
-    oif lo udp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_client"
-    oif lo tcp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_client"
-    oif lo udp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_client"
-    ct state new ct secmark set meta secmark
+
+		ct state established,related meta secmark set ct secmark
+
+		oif lo meta secmark set "local"
+
+		ct state new meta secmark set tcp dport map @secmapping_out
+		ct state new meta secmark set udp dport map @secmapping_out
+		oif lo meta secmark set tcp dport map @secmapping_out
+		oif lo meta secmark set udp dport map @secmapping_out
+
+		ct state new ip protocol icmp meta secmark set "icmp_server"
+		ct state new ip6 nexthdr icmpv6 meta secmark set "icmp_server"
+
+		oif lo tcp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_client"
+		oif lo udp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_client"
+		oif lo tcp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_client"
+		oif lo udp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_client"
+
+		ct state established,related ct direction original meta secmark set tcp dport map @secmapping_out
+		ct state established,related ct direction original meta secmark set udp dport map @secmapping_out
+		ct state established,related ct direction original ct secmark set meta secmark
+
+		ct state new ct secmark set meta secmark
 	}
 }

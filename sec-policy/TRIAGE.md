@@ -210,3 +210,187 @@ perm macros (`manage_fifo_file_perms` and friends).
 2. Re-capture over a quiet window and confirm the only AVCs left are the
    accepted ones.
 3. Then, and only then, enforcement - as an announced, separate step.
+
+## Round 15 - the coverage sweep, and the network half closed
+
+### What "coverage" now means
+
+Every running domain was enumerated from `/proc/<pid>/attr/current` and every
+enabled service from `rc-status --all`, then each was audited. 36 domains are in
+use. The ones with security weight:
+
+| domain | who | state |
+|---|---|---|
+| `sysadm_t` | `sudo` work, and the whole Android emulator stack (`qemu-system-x86`, `adb`, `adbtrack`, `netsimd`, `bridge`) | **enforced** - was the last domain with a real backlog, see the network section |
+| `staff_bubblewrap_t` | bwrap, `steamwebhelper`, the harness sandbox | enforced; 41 denials, both classes granted this round |
+| `nginx_t` | the web UI | enforced; only the conntrack legacy below |
+| `staff_t` | desktop session, the agent, node, llama-server | permissive by list; remaining classes settled |
+| `mozilla_t`, `crow_t`, `pipewire_t`, `wireplumber_t`, `gpg_t`, `staff_gkeyringd_t`, `staff_dbusd_t`, `staff_sudo_t`, `staff_screen_t` | desktop | enforced, clean in the window |
+| `sshd_t`, `xdm_t`, `xserver_t`, `getty_t`, `local_login_t`, `auditd_t`, `dhcpc_t`, `udev_t`, `systemd_logind_t`, `policykit_t`, `rtkit_daemon_t`, `devicekit_power_t`, `system_dbusd_t`, `init_t`, `kernel_t` | system | clean |
+
+Audited and recorded rather than "fixed", because neither is normal and neither
+has a policy-shaped answer:
+
+- **`initrc_t` running `ckb-next-daemon`.** A long-running daemon sitting in
+  OpenRC's init-script domain: `/usr/bin/ckb-next-daemon` is `bin_t`, so the
+  init script's exec leaves it in `initrc_t` and it runs with that domain's broad
+  access. refpolicy has no domain for it. Only a new domain fixes this properly;
+  it is on no critical path, so it is an open item, not a grant.
+- **`NetworkManager_t` running `iwd`.** That domain has no `dns_client` or
+  `mdns` packet allow. Quiet today (no denials at all from it), but under
+  enforcing iwd would be denied if it ever does mDNS or captive-portal DNS.
+- Stopped services (`postgresql-17`, `lxc.artix`) get no triage: they are not
+  running, so there is no evidence to work from. Their modules are loaded.
+
+### The network half: every flow labelled, no blanket `unlabeled_t`
+
+The ruleset was already deployed, and the deployed ruleset was verified
+equivalent to `files/ruleset.nftables` (compared normalised live output against
+the file; only nft's own rendering differs - `ipv6-icmp`, quoted `lo`). What was
+missing was coverage of the flows the maps never named. Added:
+
+| flow | label | why it is normal |
+|---|---|---|
+| DHCPv4 67/68, DHCPv6 546/547 | `dhcpc_client` -> `dhcpd_client_packet_t` | dhcpcd. refpolicy already allows the type; nothing had labelled the ports, which is why the blanket `unlabeled_t` grant in `desktop.system.base.te` existed |
+| adb 5037, emulator 5554/5555 | `adb_server`/`adb_client` | the emulator console and the adb server; adb also connects *outward* to a device's :5555 for wireless debugging |
+| mDNS 5353 for `sysadm_t` | `mdns` | 682 denials in 24h, all from `adbtrack`/`adb`/Chrome on `eno1` - it is adb's wireless-debugging discovery |
+| loopback traffic no map classifies | `local_packet_t` (new) | the emulator's dynamic ports and the local services the desktop uses on loopback: the model router on :55555, the carrier on :8081, adb's sockets |
+
+`local_packet_t` is deliberately **not** an `unlabeled_t` grant. It is applied by
+`iif lo`/`oif lo` rules only, so it can never cover anything that leaves the
+machine, and it is granted per domain (sysadm_t, staff_t, nginx_t) rather than to
+everything. The alternative - leaving those flows unlabelled - means the local
+model stack and the emulator are covered only by `staff_t`'s blanket
+`unlabeled_t`, which is exactly the thing this round removes.
+
+**The design depends on one measured fact.** The ruleset sets a loopback default
+and then lets the port map override it:
+
+    iif lo meta secmark set "local"
+    iif lo meta secmark set tcp dport map @secmapping_in
+
+That only works if a map lookup with a missing key *leaves the value alone*
+rather than clearing it. Measured directly: a mark set to 0xaa followed by a
+lookup in a map that did not contain the port survived as `mark=170` in
+`/proc/net/nf_conntrack`. A miss is a no-op, so "named label where there is one,
+`local` otherwise" holds.
+
+### Conntrack entries older than the ruleset - the real pre-enforcement hazard
+
+`nginx_t -> unlabeled_t:packet` on `:80` from `192.168.1.100` (65 times in 24h,
+`netif=eno1`) looked like a labelling gap. It is not: the deployed ruleset maps
+80, and new connections are labelled correctly. Those are **flows whose
+conntrack entry predates the ruleset load**, so they carry no secmark and every
+packet on them is unlabelled. Under enforcing they would be denied - including
+the long-lived connection carrying this session.
+
+Flushing conntrack would fix it and is forbidden. Instead the ruleset now
+re-derives the label for established flows, but only for the direction that
+*opened* the flow:
+
+    ct state established,related ct direction original \
+        meta secmark set tcp dport map @secmapping_in
+    ct state established,related ct direction original ct secmark set meta secmark
+
+so an inbound-original packet on :80 is re-labelled `http_server_packet_t` and
+the repair is written back to the conntrack entry, while a reply packet is never
+given the other side's label.
+
+Verified live after the load, by reading the conntrack `secctx` of real flows:
+
+| flow | secctx |
+|---|---|
+| `:55555` - unclassified loopback (the model router) | `local_packet_t` (was `unlabeled_t`) |
+| `:8080` - classified loopback (the gate hop) | `http_client_packet_t` - the named label still wins over the loopback default |
+| `:80` - the **legacy** entries from `branch` | `http_server_packet_t` - the repair worked on the pre-existing entries |
+
+The ruleset carries 0 drop/reject rules, both chains are `policy accept`, loopback
+ping and the `:8080` gate still answer (401 is the healthy response), and the
+state was persisted with `rc-service nftables save`.
+
+### The one category left unlabelled, and it is not a gap
+
+Off-box traffic to *ephemeral ports on both ends* cannot be named by any port
+map. A 24h scan leaves two clusters, and both are identified:
+
+- `192.168.1.100` is **`branch`'s own SSH origin machine** (`last -x` shows
+  `branch pts/2 192.168.1.100`). The flows are the operator's own remote
+  sessions and their forwarded ports to `sysadm_t` processes; the `comm` field on
+  a packet AVC is unreliable (it reports `swapper`, `htop`, even a JVM's
+  `GC Thread#0` for the same flow).
+- the emulator's own dynamic ports, which are loopback and therefore covered by
+  `local_packet_t`.
+
+An earlier claim that these were "concretely normal adb traffic" was not
+supportable from the evidence, so it is recorded as **open, pending the
+operator** rather than granted. Nothing on the critical path depends on it.
+
+### The `unlabeled_t` grants that remain, and what they are for
+
+Removing the blanket grants is the point of the round, but only where the traffic
+can be named. What is left, with the reason:
+
+| domain | verdict |
+|---|---|
+| `dhcpc_t` | **being removed** - DHCP is labelled now, and refpolicy already allows `dhcpd_client_packet_t`. Kept one capture longer only because leases are long and a renewal may not appear in the first window |
+| `mozilla_t`, `gajim_t`, `shortwave_t`, `stremio_server_t` | kept for now - WebRTC, XMPP and BitTorrent choose remote ports dynamically, so no secmark can name them. These are the domains where "audit" ends in "the port is genuinely unknowable", and that is recorded rather than papered over |
+| `ssh_t`, `staff_t` | kept for now; after this round their loopback and named-port traffic is all labelled, so the next clean capture decides whether anything is still using the blanket |
+
+### Boot-time enforcement: the finding to act on
+
+`/etc/selinux/config` says `SELINUX=enforcing` (unchanged since 2025-08-20), and
+the running kernel is permissive. The boot log for this boot
+(`/var/log/dmesg`, timestamped exactly at `uptime -s`) shows why this is not a
+simple "it is permissive at boot":
+
+    t=7.29s  audit: type=1404 ... enforcing=1 old_enforcing=0 ... res=1
+    t=7.88s  SELinux: policy capability ...            (policy load)
+    t=11.5s  audit: type=1400 ... mount_t ... locale-archive ... permissive=0
+
+So **the box really does pass through enforcing early in every boot** - those AVCs
+were enforced, not logged - and it then ends up permissive, with nothing on disk
+explaining the flip: no `setenforce` anywhere in `/etc`, `/usr/local` or
+`/lib/rc`, no `enforcing=0` on the cmdline, no `selinux` init script, no
+`MAC_STATUS` record after boot. `/etc/local.d` is empty.
+
+Two things follow, and the second is the important one:
+
+1. Enforcement at boot is *survivable here*: the box ran enforcing through its
+   early boot 30 days ago and came up cleanly. The only enforced denials in that
+   log are the `mount_t` -> mislabelled `locale-archive` pair, and that
+   mislabelling was fixed in an earlier round.
+2. The mechanism is unexplained, which is its own risk: a boot that *starts*
+   enforcing and is switched off by something I cannot identify is not a
+   controllable safety boundary. This needs the operator's knowledge before any
+   deliberate switch.
+
+### Granted this round
+
+| pattern | mechanism |
+|---|---|
+| `ssh_t -> ptmx_t:chr_file { read write }` (4) | `term_use_ptmx(ssh_t)` - ssh allocates a pty; sshd's side was already granted |
+| `ssh_t -> user_tmpfs_t:dir { search }` (3) | raw allow; an ssh started from `~/tmp` inherits that cwd |
+| `staff_sudo_t -> portage_ebuild_t:{dir search, file getattr}` (5) | `portage_read_ebuild(staff_sudo_t)` + a search allow. `sudo ./aud` and `sudo make -C <pkg> merge` become `staff_sudo_t`, so without this the policy cannot be triaged or maintained under enforcing |
+| `staff_bubblewrap_t -> self:udp_socket { write }` (39) | raw allow; `steamwebhelper` writing to the UDP socket it created for mDNS multicast. Self access, so granted rather than dontaudited |
+| `semanage_t -> self:process { getsched }` (2) | raw allow; during a merge |
+
+Measured on the way: a two-hour capture filtered to the enforcing domains (the
+seven permissive domains and my own census tooling excluded as self-inflicted)
+contained **eight distinct patterns and nothing else**. Most of what looked like
+new backlog was me: `iptables_t -> user_home_t` is `sudo nft list ruleset >
+~/tmp/...`, and `sysadm_t -> staff_t:unix_stream_socket ioctl` is `ss`/`ls`
+walking `/proc` under sudo.
+
+### r15 round log
+
+- Census over all 36 domains and all enabled services; every enforced domain's
+  denials reduced to 8 distinct patterns.
+- Network coverage closed: DHCP, adb, emulator, `sysadm_t` mDNS, and a scoped
+  `local_packet_t` for loopback; conntrack repair for flows predating the
+  ruleset, so enforcing cannot cut the session on a stale entry.
+- Found the boot-time enforcement behaviour, which is a safety question rather
+  than a triage one.
+- Verified the network half live rather than in the source: `local_packet_t` on a
+  fresh loopback flow, `http_client_packet_t` preserved on a classified one, and
+  `http_server_packet_t` on the legacy `:80` entries that would otherwise have
+  been denied under enforcing.

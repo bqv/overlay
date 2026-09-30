@@ -3,12 +3,17 @@ policy_module(desktop.system.network, 1.0)
 gen_require(`
 	attribute packet_type;
 	type staff_t;
+	type sysadm_t;
 	type stremio_server_t;
 	type nginx_t;
 	type staff_bubblewrap_t;
+	type dhcpc_t;
 	type ssh_client_packet_t;
 	type http_client_packet_t;
 	type http_server_packet_t;
+	type adb_client_packet_t;
+	type adb_server_packet_t;
+	type dhcpd_client_packet_t;
 	class packet { recv send };
 ')
 
@@ -23,6 +28,12 @@ gen_require(`
 # Every rule here comes from a capture in captures/. Where no packet type
 # exists, one is declared rather than granting a blanket unlabeled exception,
 # so the secmark keeps covering the traffic.
+#
+# r15 coverage rule: a flow is either labelled and allowed by name, or left
+# denied on purpose. The only "everything else" bucket is local_packet_t, and
+# it is scoped to iif/oif lo in the ruleset, so it can never cover off-box
+# traffic. It is not an unlabeled_t grant: the traffic is labelled, just not
+# distinguishable by port because the kernel picks the port dynamically.
 #
 
 ###
@@ -77,3 +88,56 @@ allow stremio_server_t mdns_packet_t:packet { send recv };
 # its traffic is checked against ssh_client_packet_t. Masked today only because
 # stremio_server_t sits in a permissive domain.
 allow stremio_server_t ssh_client_packet_t:packet { send recv };
+
+###
+### adb / the Android emulator - TCP 5037, 5554, 5555, UDP 5353
+###
+# The emulator stack (qemu-system-x86, adb, adbtrack, netsimd) runs in sysadm_t.
+# A r15 capture over two hours shows 86 send + 86 recv mdns_packet_t denials and
+# ~150 unlabeled_t ones on ports 5555, 5037, 1970, 33063, 40012, 41357, 34534 and
+# 57168. 5353 is adb's wireless-debugging discovery, so it is normal traffic and
+# gets the label it already has.
+allow sysadm_t mdns_packet_t:packet { send recv };
+
+# 5037 is the adb server port and 5554/5555 the emulator console/adb ports; the
+# ruleset maps them to the adb packet types. adb also connects *outward* to
+# 5555 on a phone for wireless debugging, which is why both directions are
+# labelled and both types are allowed rather than one.
+allow sysadm_t adb_server_packet_t:packet { send recv };
+allow sysadm_t adb_client_packet_t:packet { send recv };
+
+###
+### loopback-local traffic
+###
+# The emulator's other ports (1970, 33063, 40012, 41357, 34534, 57168) and the
+# local services the desktop talks to on loopback (the model router on :55555,
+# the carrier on :8081, adb's own sockets) are chosen dynamically, so no port
+# map can name them.
+#
+# The ruleset labels every loopback packet that no map classifies local_packet_t:
+#   iif lo meta secmark set "local"          # default
+#   iif lo meta secmark set tcp dport map @secmapping_in   # named label wins
+# A map lookup with a missing key leaves the value alone (verified with a mark
+# experiment), so the specific label wins where there is one and the default
+# stands where there is not. Because the rules are iif/oif lo, this type can
+# only ever cover traffic that does not leave the machine.
+type local_packet_t;
+typeattribute local_packet_t packet_type;
+
+allow sysadm_t local_packet_t:packet { send recv };
+allow staff_t local_packet_t:packet { send recv };
+allow nginx_t local_packet_t:packet { send recv };
+
+###
+### dhcpcd - DHCPv4 UDP 67/68, DHCPv6 UDP 546/547
+###
+# refpolicy already allows dhcpc_t dhcpd_client_packet_t; what was missing was
+# the labelling, so DHCP arrived as unlabeled_t and needed the blanket grant in
+# desktop.system.base.te. The ruleset maps the four ports now, so the specific
+# allow is written out here too and the blanket can go.
+allow dhcpc_t dhcpd_client_packet_t:packet { send recv };
+
+# Follow-up, needs one capture to confirm before it is deleted:
+#   desktop.system.base.te: corenet_sendrecv_unlabeled_packets(dhcpc_t)
+# It is only still there because dhcpcd leases are long and the first post-merge
+# capture may not catch a renewal.
