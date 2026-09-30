@@ -4,52 +4,40 @@ table inet filter {
 	secmark icmp_server {
 		"system_u:object_r:icmp_packet_t:s0"
 	}
-
 	secmark ssh_server {
 		"system_u:object_r:ssh_server_packet_t:s0"
 	}
-
 	secmark ssh_client {
 		"system_u:object_r:ssh_client_packet_t:s0"
 	}
-
 	secmark http_server {
 		"system_u:object_r:http_server_packet_t:s0"
 	}
-
 	secmark http_client {
 		"system_u:object_r:http_client_packet_t:s0"
 	}
-
 	secmark dns_server {
 		"system_u:object_r:dns_server_packet_t:s0"
 	}
-
 	secmark dns_client {
 		"system_u:object_r:dns_client_packet_t:s0"
 	}
-
 	secmark mosh_server {
 		"system_u:object_r:mosh_packet_t:s0"
 	}
-
 	secmark mdns {
 		"system_u:object_r:mdns_packet_t:s0"
 	}
-
 	# loopback traffic no port map classifies - see desktop.system.network.te
 	secmark local {
 		"system_u:object_r:local_packet_t:s0"
 	}
-
 	secmark adb_server {
 		"system_u:object_r:adb_server_packet_t:s0"
 	}
-
 	secmark adb_client {
 		"system_u:object_r:adb_client_packet_t:s0"
 	}
-
 	secmark dhcp_client {
 		"system_u:object_r:dhcpd_client_packet_t:s0"
 	}
@@ -93,19 +81,26 @@ table inet filter {
 	chain input {
 		type filter hook input priority -225; policy accept;
 
-		# 1. an established flow keeps the label its conntrack entry remembers
+		# 1. an established flow keeps the label its conntrack entry remembers.
+		#    A loopback flow was labelled once, by the side that opened it, and
+		#    is not re-derived here - the two chains hold different maps and
+		#    re-deriving on loopback would make them disagree about one flow.
 		ct state established,related meta secmark set ct secmark
 
-		# 2. loopback default. A map hit in step 3 still overrides it, and a map
-		#    lookup with a missing key leaves the value alone, so this gives
-		#    "named label where there is one, local otherwise".
-		iif lo meta secmark set "local"
+		# 2. (no loopback default here on purpose - every loopback packet is
+		#    generated locally, so it already passed the output chain and that
+		#    chain labelled this same skb. Setting a default here would clobber
+		#    the label the output chain derived from the outbound map: the two
+		#    maps hold different ports, and :8080 exists in only one of them.)
 
-		# 3. label by port: new flows, and loopback re-checked on every packet
-		ct state new meta secmark set tcp dport map @secmapping_in
-		ct state new meta secmark set udp dport map @secmapping_in
-		iif lo meta secmark set tcp dport map @secmapping_in
-		iif lo meta secmark set udp dport map @secmapping_in
+		# 3. a named label where a port map names one, for off-box flows. A
+		#    loopback packet is excluded here for the same reason as step 2:
+		#    it was already labelled by the output chain, and the inbound map
+		#    would override that with the other side's type (a browser's
+		#    loopback flow to :80 would become http_server instead of
+		#    http_client, and the browser's next receive would be denied).
+		ct state new meta iifname != "lo" meta secmark set tcp dport map @secmapping_in
+		ct state new meta iifname != "lo" meta secmark set udp dport map @secmapping_in
 
 		ct state new ip protocol icmp meta secmark set "icmp_server"
 		ct state new ip6 nexthdr icmpv6 meta secmark set "icmp_server"
@@ -115,16 +110,16 @@ table inet filter {
 		iif lo tcp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_server"
 		iif lo udp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_server"
 
-		# 4. repair a flow whose conntrack entry predates these rules. Only the
-		#    direction that opened the flow is re-derived, so a reply packet is
-		#    never given the other side's label. An unmapped port stays as it
-		#    was - unmapped off-box traffic is still left unlabeled on purpose.
-		ct state established,related ct direction original meta secmark set tcp dport map @secmapping_in
-		ct state established,related ct direction original meta secmark set udp dport map @secmapping_in
-		ct state established,related ct direction original ct secmark set meta secmark
+		# 4. repair an off-box flow whose conntrack entry predates these rules:
+		#    only the direction that opened it, and never on loopback, so a reply
+		#    is never given the other side's label. An unmapped port stays as it
+		#    was - unmapped off-box traffic is left unlabeled on purpose.
+		ct state established,related ct direction original meta iifname != "lo" meta secmark set tcp dport map @secmapping_in
+		ct state established,related ct direction original meta iifname != "lo" meta secmark set udp dport map @secmapping_in
 
-		# 5. remember it on the conntrack entry
+		# 5. remember it: new flows in full, repaired flows written back
 		ct state new ct secmark set meta secmark
+		ct state established,related ct direction original meta iifname != "lo" ct secmark set meta secmark
 	}
 
 	chain output {
@@ -132,12 +127,10 @@ table inet filter {
 
 		ct state established,related meta secmark set ct secmark
 
-		oif lo meta secmark set "local"
+		ct state new oif lo meta secmark set "local"
 
 		ct state new meta secmark set tcp dport map @secmapping_out
 		ct state new meta secmark set udp dport map @secmapping_out
-		oif lo meta secmark set tcp dport map @secmapping_out
-		oif lo meta secmark set udp dport map @secmapping_out
 
 		ct state new ip protocol icmp meta secmark set "icmp_server"
 		ct state new ip6 nexthdr icmpv6 meta secmark set "icmp_server"
@@ -147,10 +140,10 @@ table inet filter {
 		oif lo tcp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_client"
 		oif lo udp dport 22 ip saddr 127.0.0.1 ip daddr 127.0.0.1 meta secmark set "ssh_client"
 
-		ct state established,related ct direction original meta secmark set tcp dport map @secmapping_out
-		ct state established,related ct direction original meta secmark set udp dport map @secmapping_out
-		ct state established,related ct direction original ct secmark set meta secmark
+		ct state established,related ct direction original meta oifname != "lo" meta secmark set tcp dport map @secmapping_out
+		ct state established,related ct direction original meta oifname != "lo" meta secmark set udp dport map @secmapping_out
 
 		ct state new ct secmark set meta secmark
+		ct state established,related ct direction original meta oifname != "lo" ct secmark set meta secmark
 	}
 }
