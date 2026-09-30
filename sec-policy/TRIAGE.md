@@ -263,17 +263,30 @@ everything. The alternative - leaving those flows unlabelled - means the local
 model stack and the emulator are covered only by `staff_t`'s blanket
 `unlabeled_t`, which is exactly the thing this round removes.
 
-**The design depends on one measured fact.** The ruleset sets a loopback default
-and then lets the port map override it:
+**The design depends on two measured facts.**
 
-    iif lo meta secmark set "local"
-    iif lo meta secmark set tcp dport map @secmapping_in
+First, a map lookup with a missing key *leaves the value alone* rather than
+clearing it: a mark set to 0xaa followed by a lookup in a map that did not
+contain the port survived as `mark=170` in `/proc/net/nf_conntrack`. That is
+what lets the loopback default stand where no port names the flow.
 
-That only works if a map lookup with a missing key *leaves the value alone*
-rather than clearing it. Measured directly: a mark set to 0xaa followed by a
-lookup in a map that did not contain the port survived as `mark=170` in
-`/proc/net/nf_conntrack`. A miss is a no-op, so "named label where there is one,
-`local` otherwise" holds.
+Second - and this cost a wrong first attempt - **a loopback packet passes both
+chains**, so a loopback flow must be labelled by exactly one of them. The first
+version set a loopback default and re-derived the label from the port map in
+both chains. The two maps do not hold the same ports, so a browser connection to
+`127.0.0.1:80` was `http_client` on the output side and `http_server` on the
+input side, and the browser's next receive was denied against
+`local_packet_t`/`http_server`. The rules now label loopback only in the output
+chain, and the input chain's port-map lookups and conntrack repair are
+`meta iifname != "lo"` / `meta oifname != "lo"`. Verified with a fixed source
+port so the entry could not be confused with an older one:
+
+    curl --local-port 45678 http://127.0.0.1:8080/  -> http_client_packet_t
+    curl --local-port 45679 http://127.0.0.1:80/    -> http_client_packet_t
+
+The fixed source port matters: reading "the first entry for dport=8080" showed
+11 stale entries still carrying the old label and looked like the fix had not
+worked.
 
 ### Conntrack entries older than the ruleset - the real pre-enforcement hazard
 
@@ -390,6 +403,10 @@ walking `/proc` under sudo.
   ruleset, so enforcing cannot cut the session on a stale entry.
 - Found the boot-time enforcement behaviour, which is a safety question rather
   than a triage one.
+- Caught a clobber I introduced: the input chain was re-deriving loopback labels
+  from the inbound map, which disagrees with the outbound one. Fixed by labelling
+  loopback in the output chain only (`6471f52`); verified with fixed source ports;
+  browser packet denials went to zero.
 - Verified the network half live rather than in the source: `local_packet_t` on a
   fresh loopback flow, `http_client_packet_t` preserved on a classified one, and
   `http_server_packet_t` on the legacy `:80` entries that would otherwise have

@@ -114,13 +114,16 @@ allow sysadm_t adb_client_packet_t:packet { send recv };
 # the carrier on :8081, adb's own sockets) are chosen dynamically, so no port
 # map can name them.
 #
-# The ruleset labels every loopback packet that no map classifies local_packet_t:
-#   iif lo meta secmark set "local"          # default
-#   iif lo meta secmark set tcp dport map @secmapping_in   # named label wins
-# A map lookup with a missing key leaves the value alone (verified with a mark
-# experiment), so the specific label wins where there is one and the default
-# stands where there is not. Because the rules are iif/oif lo, this type can
-# only ever cover traffic that does not leave the machine.
+# A loopback flow is labelled exactly once, by the output chain that generated
+# it: `ct state new oif lo meta secmark set "local"`, then the outbound port map,
+# so a named label wins where there is one. The input chain does NOT repeat
+# either step - a loopback packet passes both chains, and the inbound map holds
+# different ports, so re-deriving there would label one flow two different ways
+# (a browser flow to 127.0.0.1:80 came out http_server on the input side while
+# the output side had said http_client). The map lookup leaves the value alone
+# when the key is missing - measured, not assumed - which is what lets the
+# default stand where no port names the flow. Because every rule is oif lo,
+# this type can only ever cover traffic that does not leave the machine.
 type local_packet_t;
 typeattribute local_packet_t packet_type;
 
