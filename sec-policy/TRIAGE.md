@@ -656,3 +656,63 @@ Strictly after the last r16 merge, the log holds **2 AVCs**, both the documented
 `sysadm_t` -> `unlabeled_t:packet` off-box category (one from `libuv-worker`).
 Nothing from the domains whose flags were dropped - though the desktop is idle,
 so that is a weak signal for the app domains rather than a strong one.
+
+### Round 17b - the source census, and the last unlabelled flows
+
+**Every loaded module has a source, in both directions.** 100 modules loaded,
+100 `.pp`/`.cil` in `/usr/share/selinux/mcs/`, from 50 installed `sec-policy/*`
+packages: 13 from this overlay, 87 from the distro's packages. The overlay's
+`refpolicy/` tree holds 82 of them; the other nine (`android`, `base`,
+`bubblewrap`, `dracut`, `makewhatis`, `nginx`, `openrc`, `tmpfiles`, `wayland`)
+come from distro packages and are not expected in the tree. Worth recording for a
+different reason: the distro packages are refpolicy **20260616** while this
+overlay pins **20250213**, so the box runs a mix - a future distro bump could
+rename a type out from under the local modules, which is what the require blocks
+are protecting against.
+
+**Stremio's streaming server was the last reachable service riding a blanket.**
+`server.js` binds `*:11471`, so a LAN player reaches it, and 11471 was not in any
+map - `stremio_server_t`'s blanket `unlabeled_t` grant was the only thing covering
+it. Now labelled `http_server` in `secmapping_in` with the specific allow.
+
+**A new way to see the whole picture: read the secmarks out of conntrack.** Every
+flow carries its secmark, so `grep secctx /proc/net/nf_conntrack` is a live census
+of the labelling, no capture needed:
+
+    56 unlabeled_t   48 http_client_packet_t   28 local_packet_t
+     8 dns_client_packet_t   8 adb_client_packet_t   4 http_server_packet_t
+     3 mdns_packet_t   1 adb_server_packet_t
+
+The 56 unlabelled ones are two flows, both now identified:
+
+- **Google FCM, TCP 5228**, and this is the attribution the earlier rounds could
+  not make: `comm="slirp"`, `scontext=sysadm_t`, `daddr=173.194.221.188`. That is
+  qemu's user-mode networking carrying the **Android emulator guest's** traffic to
+  Google's push servers. Concretely normal for someone running an emulator, but the
+  *remote* port is Google's choice, so no port map can name it. Options, both
+  defensible and left to the operator: leave it denied (the emulator keeps working -
+  80/443/53 are mapped - but push does not), or label unclassified *outbound*
+  non-loopback flows with a new `dynamic_client_packet_t` and grant that to
+  `sysadm_t` alone. The second is not an `unlabeled_t` grant and has a real
+  security difference: it would apply only to locally-initiated flows, so an
+  inbound connection to an unclassified local port would still be denied.
+- **SSDP, UDP 1900** (inbound announcement from `239.255.255.250`, likely Stremio's
+  or the browser's discovery). refpolicy already declares
+  `ssdp_client_packet_t`/`ssdp_server_packet_t`, but **no domain holds them and
+  there is no interface**. Deliberately **left unlabelled**: with no AVC and no live
+  socket there is nothing to attribute the flow to, and labelling a flow whose
+  domain has no allow *converts a blanket-covered flow into a denied one* - the
+  mistake `local_packet_t` made with `mozilla_t` in r15. The fix is ready (label
+  1900, grant the type to whoever a capture names) but it needs the attribution
+  first.
+
+**The enabled-but-stopped services have been examined as far as static evidence
+goes.** `postgresql-17` and `lxc.artix` are both in the default runlevel and both
+stopped, with **zero** AVCs in every retained log, so there is no behaviour to
+triage. What can be checked is checked: PostgreSQL's paths are labelled exactly as
+its module expects (`postgresql_db_t`, `postgresql_runtime_t`, `postgresql_etc_t`),
+and LXC's match `matchpathcon` (`/var/lib/lxc` and `/var/lib/lxc/artix` are
+`var_lib_t`, `/etc/lxc` is `etc_t`, `lxc-start` is `bin_t`) - this refpolicy simply
+defines no container-specific types for that tree. So neither is a labelling gap;
+the first *start* under enforcing would be the first real audit of them, and that
+is recorded rather than guessed.

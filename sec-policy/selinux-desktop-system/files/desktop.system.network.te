@@ -85,6 +85,15 @@ allow staff_t mdns_packet_t:packet { send recv };
 allow stremio_server_t mdns_packet_t:packet { send recv };
 
 ###
+### stremio's streaming server - TCP 11471
+###
+# server.js binds *:11471, so a LAN client (the user's own player) reaches it and
+# the traffic was covered only by stremio_server_t's blanket unlabeled_t grant.
+# The ruleset labels the port http_server now, so the flow is named and the
+# specific allow replaces the blanket for it.
+allow stremio_server_t http_server_packet_t:packet { send recv };
+
+###
 ### stremio
 ###
 # Stremio connects outward to :22, which secmapping_out labels ssh_client, so

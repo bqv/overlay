@@ -55,6 +55,7 @@ table inet filter {
 				5037 : "adb_server",\
 				5554 : "adb_server",\
 				5555 : "adb_server",\
+				11471 : "http_server",\
 			}
 	}
 
