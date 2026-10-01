@@ -716,3 +716,51 @@ and LXC's match `matchpathcon` (`/var/lib/lxc` and `/var/lib/lxc/artix` are
 defines no container-specific types for that tree. So neither is a labelling gap;
 the first *start* under enforcing would be the first real audit of them, and that
 is recorded rather than guessed.
+
+## Round 18 - the census tool fixed, DHCP retired, mail and XMPP labelled
+
+### `ss` was the largest source of AVC noise on the box
+
+A re-triage straight after the previous merge returned **8153 AVCs** - and every
+one was mine: `ss_t -> <every other domain>:dir search`, from `ss -tulpnH`. That
+is not a policy gap in the abstract; `ss -p` maps sockets back to processes by
+walking `/proc/<pid>`, exactly what htop/nvtop needed, and 17k of those denials sit
+in the retained logs. Two consequences, both worth fixing:
+
+- under enforcing, `ss -p` would be **broken** - the socket-to-process mapping is
+  the tool's whole point - and it is a normal admin tool, not an unusual one;
+- every triage window I take is polluted by it, which is how a "8153-denial
+  window" turns out to contain no real denials at all.
+
+Treated exactly like `staff_t`: `domain_read_all_domains_state(ss_t)` for the
+`/proc` walk, plus raw allows for the socket `getattr`s (`domain_getattr_all_domains`
+covers only the process class). The verification is direct - run `ss -tulpnH`
+again and count new denials; it should be zero.
+
+### The `dhcpc_t` blanket is gone, on evidence
+
+It was kept in r15 with the note "needs one capture to confirm". The evidence
+arrived without a capture: the lease renewed at **08:16 on 1 Oct**, after the DHCP
+labelling went in, and there are **zero** `dhcpc_t` packet denials since. Combined
+with 67/68/546/547 being in the maps, the blanket was dead weight, so it is
+removed.
+
+### Mail and XMPP: normal flows that had no labels
+
+Neither the mail ports nor the XMPP ports were mapped, so the mail plugin's IMAP
+and the MTA's SMTP were covered only by `staff_t`'s blanket, and Gajim's XMPP by
+`gajim_t`'s. Both are normal flows for this box, so they are labelled now:
+
+    out: 25/465/587 -> smtp_client   110/995 -> pop_client
+         143/993    -> mail_client   5222/5223 -> jabber_client
+
+refpolicy already declares `smtp_client_packet_t`, `pop_client_packet_t`,
+`mail_client_packet_t` and `jabber_client_client_packet_t`, so no new types.
+
+**The check that makes this safe is worth naming**: before labelling a port, ask
+whether the domain that uses it already holds the type. `staff_t` does - it has
+`client_packet_type`, which is why the mail plugin and `system_mail_t` (the MTA
+domain here; `mta_t` does not exist in this policy) need no change. `gajim_t`
+does **not**, so labelling 5222 without granting the type would have converted a
+blanket-covered flow into a denied one - the `mozilla_t`/`local_packet_t` mistake
+from r15. The grant and the label therefore land in the same change.

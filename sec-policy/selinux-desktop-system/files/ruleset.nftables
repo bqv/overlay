@@ -42,6 +42,21 @@ table inet filter {
 		"system_u:object_r:dhcpd_client_packet_t:s0"
 	}
 
+	# mail and XMPP are normal flows for this box (the mail plugin, Gajim) but the
+	# ports were unmapped, so only the per-domain blankes covered them.
+	secmark smtp_client {
+		"system_u:object_r:smtp_client_packet_t:s0"
+	}
+	secmark pop_client {
+		"system_u:object_r:pop_client_packet_t:s0"
+	}
+	secmark mail_client {
+		"system_u:object_r:mail_client_packet_t:s0"
+	}
+	secmark jabber_client {
+		"system_u:object_r:jabber_client_client_packet_t:s0"
+	}
+
 	map secmapping_in {
 		type inet_service : secmark
 			elements = {\
@@ -75,7 +90,16 @@ table inet filter {
 				5555 : "adb_client",\
 				60001 : "mosh_server",\
 				60002 : "mosh_server",\
+				5222 : "jabber_client",\
+				5223 : "jabber_client",\
 				8080 : "http_client",\
+				25 : "smtp_client",\
+				465 : "smtp_client",\
+				587 : "smtp_client",\
+				110 : "pop_client",\
+				995 : "pop_client",\
+				143 : "mail_client",\
+				993 : "mail_client",\
 			}
 	}
 

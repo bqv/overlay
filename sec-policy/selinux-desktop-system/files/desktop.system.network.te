@@ -158,10 +158,9 @@ allow mozilla_t local_packet_t:packet { send recv };
 # allow is written out here too and the blanket can go.
 allow dhcpc_t dhcpd_client_packet_t:packet { send recv };
 
-# Follow-up, needs one capture to confirm before it is deleted:
-#   desktop.system.base.te: corenet_sendrecv_unlabeled_packets(dhcpc_t)
-# It is only still there because dhcpcd leases are long and the first post-merge
-# capture may not catch a renewal.
+# The blanket that used to sit next to this in desktop.system.base.te is gone:
+# the lease renewed at 08:16 on 1 Oct, after this mapping went in, with zero
+# dhcpc_t packet denials.
 
 ###
 ### ICMP - ping from the session

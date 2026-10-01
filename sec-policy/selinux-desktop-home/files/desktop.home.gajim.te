@@ -18,7 +18,9 @@ gen_require(`
 	type var_lib_t;
 	type xauth_tmp_t;
 	type xdg_data_t;
+	type jabber_client_client_packet_t;
 	class process { getcap getsched };
+	class packet { send recv };
 	class udp_socket { connect create getattr read setopt write };
 	class file { create execute getattr link map open read relabelto unlink watch write };
 	class dir { add_name create getattr open read relabelto remove_name search watch write };
@@ -87,6 +89,12 @@ corecmd_exec_bin(gajim_t)
 corecmd_search_bin(gajim_t)
 corenet_sendrecv_dns_client_packets(gajim_t)
 corenet_sendrecv_http_client_packets(gajim_t)
+# r18: Gajim's XMPP client connections are on 5222/5223, which the ruleset now
+# labels jabber_client. The type has to be granted in the same change that
+# labels the port - labelling a flow whose domain has no allow turns a
+# blanket-covered flow into a denied one.
+allow gajim_t jabber_client_client_packet_t:packet { send recv };
+
 corenet_sendrecv_unlabeled_packets(gajim_t)
 corenet_tcp_connect_http_port(gajim_t)
 corenet_tcp_connect_jabber_client_port(gajim_t)

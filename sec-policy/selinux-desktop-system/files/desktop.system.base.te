@@ -48,9 +48,14 @@ gen_require(`
   class file { create getattr map open read unlink write relabelfrom relabelto };
   class dir { create getattr open read search relabelfrom relabelto };
   class capability { dac_override net_admin };
-  class unix_dgram_socket sendto;
+  class unix_dgram_socket { getattr sendto };
   class unix_stream_socket { getattr ioctl read write };
-  class tcp_socket name_bind;
+  class tcp_socket { getattr name_bind };
+  class udp_socket getattr;
+  class netlink_route_socket getattr;
+  class netlink_kobject_uevent_socket getattr;
+  class netlink_selinux_socket getattr;
+  class netlink_generic_socket getattr;
   type portage_ebuild_t;
   type staff_screen_t;
   type staff_git_t;
@@ -62,6 +67,7 @@ gen_require(`
   type alsa_t;
   type init_t;
   type systemd_tmpfiles_t;
+  type ss_t;
   type portage_db_t;
   type var_run_t;
 ')
@@ -75,7 +81,10 @@ selinux_getattr_fs(dhcpc_script_t)
 seutil_search_default_contexts(dhcpc_script_t)
 
 dontaudit dhcpc_t dhcpc_script_t:process { noatsecure rlimitinh siginh };
-corenet_sendrecv_unlabeled_packets(dhcpc_t) # until secmarked
+# r18: the dhcpc_t unlabeled_t grant is gone. It existed because nothing
+# labelled the DHCP ports; the ruleset maps 67/68/546/547 now, and the
+# lease renewed at 08:16 on 1 Oct - after the labelling - with zero
+# dhcpc_t packet denials. Verified by evidence, not by assumption.
 
 term_read_console(dmesg_t)
 
@@ -326,3 +335,16 @@ files_search_src(staff_t)
 allow staff_t src_t:file { getattr open read };
 # querying the installed-package database (qlist/eselect-style tools)
 allow staff_t portage_db_t:file { getattr open read };
+
+# --- r18: ss, the socket census ---
+#
+# `ss -tulpn` walks /proc/<pid> to map sockets back to the processes that hold
+# them, which is the same access htop/nvtop needed - 17k denials in the retained
+# logs, the single largest source of AVC noise in the triage windows, and `ss` is
+# a normal admin tool rather than something unusual. Same treatment as staff_t:
+# the refpolicy interface for the /proc walk, plus raw allows for the socket
+# getattrs, because refpolicy has no interface for those (domain_getattr_all_
+# domains covers only the process class) and getattr is read-only metadata.
+domain_read_all_domains_state(ss_t)
+allow ss_t domain:{ tcp_socket udp_socket unix_stream_socket unix_dgram_socket } getattr;
+allow ss_t domain:{ netlink_route_socket netlink_kobject_uevent_socket netlink_selinux_socket netlink_generic_socket } getattr;
