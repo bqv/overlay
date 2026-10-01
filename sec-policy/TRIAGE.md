@@ -757,6 +757,19 @@ and the MTA's SMTP were covered only by `staff_t`'s blanket, and Gajim's XMPP by
 refpolicy already declares `smtp_client_packet_t`, `pop_client_packet_t`,
 `mail_client_packet_t` and `jabber_client_client_packet_t`, so no new types.
 
+**Two more unlabelled classes showed up in the post-merge census**, both left
+alone on purpose and both worth naming so the next round does not re-derive them:
+
+- **`192.168.1.104:8008`** - a peer that has not appeared before, on the port
+  Chromecast-style devices use. There is no packet type for it and nothing
+  attributes the flow to a domain, so labelling it would be the SSDP mistake
+  (converting a blanket-covered flow into a denied one). Recorded, not labelled.
+- **Legacy loopback flows** (`127.0.0.1 <-> 127.0.0.1`, 10 entries): these predate
+  the loopback labelling, and the r15 repair was deliberately restricted to
+  non-loopback (`meta iifname != "lo"`) so the two chains can never disagree about
+  a loopback flow. They clear as the connections recycle; new loopback flows are
+  labelled. Nothing to do.
+
 **The check that makes this safe is worth naming**: before labelling a port, ask
 whether the domain that uses it already holds the type. `staff_t` does - it has
 `client_packet_type`, which is why the mail plugin and `system_mail_t` (the MTA
