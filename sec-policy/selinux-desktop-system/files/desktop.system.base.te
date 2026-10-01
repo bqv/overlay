@@ -49,6 +49,7 @@ gen_require(`
   class dir { create getattr open read search relabelfrom relabelto };
   class capability { dac_override net_admin };
   class unix_dgram_socket sendto;
+  class unix_stream_socket { getattr ioctl read write };
   class tcp_socket name_bind;
   type portage_ebuild_t;
   type staff_screen_t;
@@ -56,6 +57,8 @@ gen_require(`
   type init_runtime_t;
   type user_bin_t;
   type staff_sudo_t;
+  type user_tmpfs_t;
+  type shell_exec_t;
   type var_run_t;
 ')
 
@@ -280,3 +283,13 @@ allow staff_sudo_t portage_ebuild_t:dir search;
 
 # semodule/semanage asking for its own scheduling class during a merge.
 allow semanage_t self:process getsched;
+
+# --- r16: git in the session's no_new_privs context ---
+# git's remaining denials once staff_git_t came off the permissive list.
+allow staff_git_t user_tmpfs_t:dir search;
+# git talks to a socket the session owns (the agent/wrapper socket)
+allow staff_git_t staff_t:unix_stream_socket { getattr ioctl read write };
+# git's mmap heuristic reads /proc/sys/vm/overcommit_memory
+kernel_read_vm_overcommit_sysctl(staff_git_t)
+# the wrapper runs shell scripts (hooks/pagers) without a transition
+allow staff_git_t shell_exec_t:file { map execute_no_trans };

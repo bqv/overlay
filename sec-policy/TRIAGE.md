@@ -417,3 +417,120 @@ walking `/proc` under sudo.
   fresh loopback flow, `http_client_packet_t` preserved on a classified one, and
   `http_server_packet_t` on the legacy `:80` entries that would otherwise have
   been denied under enforcing.
+
+## Round 16 - the permissives dropped, and what that exposed
+
+### The drop itself
+
+All seven permissive flags were removed (`semanage permissive -d` for crow_t,
+gajim_t, java_t, mplayer_t, staff_git_t, staff_t, stremio_server_t). They were
+hand-made `(typepermissive X)` modules in the store with **no source anywhere in
+the overlay** - so this also removes seven modules that the "no source" rule
+forbade. The store went 107 -> 100 modules, and `semodule -l` now lists only
+modules the overlay can rebuild.
+
+**What it does not do: change anything yet.** Two things are worth being precise
+about, because both are easy to get wrong:
+
+- While the *global* mode is permissive (`/sys/fs/selinux/enforce` = 0), dropping
+  a domain flag has no runtime effect at all: the denial is still logged, not
+  enforced.
+- The `permissive=` field in an AVC is **not** "is this domain permissive". Every
+  AVC since the drop still reads `permissive=1`, because the field reports the
+  *effective* mode for that denial - global mode is permissive, so every denial is
+  unenforced. `permissive=0` appears only when enforcement is actually happening
+  (at boot, before the box switches itself back). So the field cannot be used to
+  find the gaps; the domain list and the policy are what answer that question.
+
+### What the dropped domains actually need
+
+Volume over the retained logs (~14 h), and only three of the seven appear at all:
+
+| domain | denials | what it is |
+|---|---|---|
+| `java_t` | 7015 | **the Android build** - `gradlew`, `java`, `clang++`, `ndk-build`, `jspawnhelper` building the *tulkki* APK under `~/var/work` |
+| `staff_git_t` | 370 | `git` (358) and `sh` (12) - the user's git wrapper |
+| `staff_t` | 310 | the session, almost all of it `nnp_transition`/`nosuid_transition` when it launches those two |
+| `crow_t`, `gajim_t`, `mplayer_t`, `stremio_server_t` | 0 | idle; nothing to fix, and no grants invented for them |
+
+`java_t` is the "per-role application domains get no home access" class the ledger
+already describes, at build-tool scale: home content write/setattr/unlink/create,
+dir add_name/remove_name/setattr/watch, the `~/tmp` tmpfs as scratch, the JVM's
+`execmem`, `/etc/env.d` (labelled `etc_runtime_t`) via `clang++` looking for the
+toolchain, the cgroup reads, and `lib_t` execution for the NDK tools.
+
+### The trap that cost two failed merges: `process2`
+
+`nnp_transition` and `nosuid_transition` live in the **`process2`** class, not
+`process` (refpolicy's `policy/flask/access_vectors`: `class process2 {
+nnp_transition nosuid_transition }`). Writing them into `class process { ... }`
+produces a *misleading* error from checkmodule:
+
+    Class process would have too many permissions to fit in an access vector
+    with permission nosuid_transition
+
+which reads like a class-table/AV-slot defect (the same family as the
+`io_uring:getattr` block) and sent me to the wrong fix - a hand-written CIL
+statement, which then failed differently ("Failed to resolve permission
+nnp_transition"). The cause of the misdiagnosis was my own AVC parser:
+`tclass=([a-z_]+)` does not match `process2`, so the class name was silently
+truncated to `process` in every listing this round. **Any tclass with a digit in
+it was being mangled** - worth checking before trusting a pattern list.
+
+Both grants now go in the .te, on the right class:
+
+    class process2 { nnp_transition nosuid_transition };
+    allow staff_t java_t:process2       { nnp_transition nosuid_transition };
+    allow staff_t staff_git_t:process2  { nnp_transition nosuid_transition };
+    allow staff_t ssh_t:process2        { nnp_transition nosuid_transition };
+
+The session runs under `no_new_privs` (the harness sandbox), so without these a
+build or the git wrapper cannot be launched *from the agent's session* at all -
+the exec is refused. Launches from a normal terminal are unaffected.
+
+### Granted this round
+
+| pattern | mechanism |
+|---|---|
+| `java_t` -> user_home_t (file write/setattr/unlink/create, dir add_name/remove_name/setattr/watch) | `userdom_manage_user_home_content_files/_dirs(java_t)` + a watch allow |
+| `java_t` -> user_tmpfs_t (dir and file) | `manage_dirs_pattern` / `manage_files_pattern` on the user tmpfs mount |
+| `java_t` -> self:process execmem (99) | explicit allow, **scoped to java_t** rather than the global `allow_execmem` boolean - the JVM does not run without it, and this is the narrowest form |
+| `java_t` -> etc_runtime_t (572) | `files_read_etc_runtime_files(java_t)` + dir search: `clang++` reading `/etc/env.d/gcc` to find a toolchain |
+| `java_t` -> cgroup_t | `fs_read_cgroup_files(java_t)` + dir search |
+| `java_t` -> lib_t:file execute_no_trans (97) | raw allow; the NDK executes toolchain binaries |
+| `java_t` -> ptmx_t | `term_use_ptmx(java_t)` |
+| `java_t` -> local_packet_t | Gradle daemon <-> workers over loopback |
+| `staff_git_t` | user_tmpfs dir search, `staff_t:unix_stream_socket` rw/getattr/ioctl, `kernel_read_vm_overcommit_sysctl` (git's mmap heuristic), `shell_exec_t { map execute_no_trans }` (hooks/pagers) |
+| `staff_t` -> devpts_t:chr_file | `script(1)` allocating a pty |
+| `staff_t` -> proc_psi_t | `kernel_read_psi(staff_t)` |
+
+### A readiness problem found in the merge itself
+
+Every merge this round printed, after loading the modules successfully:
+
+    Failed to calculate reverse dependencies for policy: qdepends returned 1.
+    File ".../rlpkg", line 234, in relabel_packages
+    AttributeError: 'str' object has no attribute 'unevaluated_atom'
+
+The policy loads fine; what fails is the eclass' **automatic relabel step**
+(`qdepends` cannot read the installed package set, and `rlpkg` then crashes on a
+portage API change). Consequence: when the policy changes a file context, nothing
+re-labels the filesystem - the module's `file_contexts` is updated in the store,
+but the files keep their old labels until something runs `restorecon`/`rlpkg`
+by hand. Nothing in this round depends on a file context change, so it has not
+bitten yet, but it is exactly the kind of gap that shows up at enforcement time,
+and it is the same toolchain breakage that already made `audit2allow` unusable.
+
+### Deliberately not granted yet
+
+- `java_t` -> `unlabeled_t:packet` (~95 each way): unclassifiable off-box remote
+  ports during dependency resolution. The ruleset changed under this traffic today
+  (loopback and the named ports are labelled now, so part of it is already gone),
+  so a post-fix capture decides what is left. Not blanket-allowed meanwhile.
+- `staff_bubblewrap_t` -> `fs_t:filesystem getattr` (17): Steam's statfs inside
+  the sandbox. Cosmetic.
+- `staff_t` -> `systemd_sessions_runtime_t:file { open read }`: `uptime` counting
+  sessions from `/run/systemd/sessions/c4`. Cosmetic; grant if it matters.
+- `sysadm_t` -> `staff_t:unix_stream_socket ioctl`: admin tooling only.
+- `sysadm_t` -> self `execheap`: a CEF render thread; needs the `allow_execheap`
+  boolean, i.e. a deliberate W^X relaxation.

@@ -56,7 +56,10 @@ gen_require(`
   type utempter_t;
   class filesystem { getattr remount };
   class process { execmem getcap noatsecure ptrace rlimitinh setexec setsched siginh transition };
+  class process2 { nnp_transition nosuid_transition };
   class fd use;
+  class chr_file { getattr ioctl open read write };
+  class unix_stream_socket { getattr ioctl read write };
   class file { create getattr map open read unlink write relabelfrom relabelto };
   class dir { add_name create getattr mounton open read remove_name search relabelfrom relabelto };
   class lnk_file { create read unlink };
@@ -79,6 +82,15 @@ gen_require(`
   type wtmp_t;
   type xauth_tmp_t;
   type staff_bubblewrap_t;
+  type java_t;
+  type user_tmpfs_t;
+  type devpts_t;
+  type etc_runtime_t;
+  type lib_t;
+  type ssh_t;
+  type staff_git_t;
+  type local_packet_t;
+  type systemd_sessions_runtime_t;
   type xdg_data_t;
   type mozilla_t;
   type staff_gkeyringd_t;
@@ -278,3 +290,51 @@ allow local_login_t sysadm_t:process { noatsecure rlimitinh siginh };
 # self access on a socket the domain created itself, so it is granted here
 # rather than buried in a dontaudit.
 allow staff_bubblewrap_t self:udp_socket write;
+
+# --- r16: java_t is the Android build (gradlew, java, clang++, ndk-build) ---
+#
+# The per-role application domains get no user home access at all (see TRIAGE),
+# and this one builds an APK under ~/var/work, so it needs the home content
+# access any user build tool gets. Every line below names an AVC observed while
+# that build ran; none of it is speculative.
+userdom_manage_user_home_content_files(java_t)
+userdom_manage_user_home_content_dirs(java_t)
+allow java_t user_home_t:dir watch;
+# ~/tmp is the build's scratch space (create/unlink/lock/map on the tmpfs mount)
+manage_dirs_pattern(java_t, user_tmpfs_t, user_tmpfs_t)
+manage_files_pattern(java_t, user_tmpfs_t, user_tmpfs_t)
+# The JVM allocates executable memory for its JIT: 99 denials. This is a W^X
+# relaxation, but scoped to java_t rather than the global allow_execmem boolean,
+# and without it Java does not run at all.
+allow java_t self:process execmem;
+# clang++ reads /etc/env.d/gcc to find the toolchain (etc_runtime_t is /etc/env.d
+# here) - without this the NDK build cannot locate a compiler.
+files_read_etc_runtime_files(java_t)
+allow java_t etc_runtime_t:dir { search getattr };
+# the daemon reads its cgroup; the NDK executes clang out of lib_t
+fs_read_cgroup_files(java_t)
+allow java_t cgroup_t:dir search;
+allow java_t lib_t:file execute_no_trans;
+term_use_ptmx(java_t)
+# the Gradle daemon talks to its workers over loopback
+allow java_t local_packet_t:packet { send recv };
+
+# --- r16: staff_t launching those builds, and script(1) taking a pty ---
+# The session runs under no_new_privs (the harness' sandbox), so every domain
+# transition it makes needs the explicit nnp/nosuid permission. Without these the
+# user cannot start a build or a git wrapper from the session at all.
+allow staff_t java_t:process2 { nnp_transition nosuid_transition };
+allow staff_t staff_git_t:process2 { nnp_transition nosuid_transition };
+allow staff_t ssh_t:process2 { nnp_transition nosuid_transition };
+allow staff_t devpts_t:chr_file { getattr open read write ioctl };
+kernel_read_psi(staff_t)
+
+# --- r16: the cheap leftovers, all cosmetic but all real ---
+# steamwebhelper statfs's the root fs inside the sandbox and gets nothing; the
+# sandbox already has fs_remount_all_fs, so a read-only statfs is within scope.
+fs_getattr_all_fs(staff_bubblewrap_t)
+# uptime/w count sessions from /run/systemd/sessions/<id>; refpolicy has no
+# interface for that file, so a raw read.
+allow staff_t systemd_sessions_runtime_t:file { getattr open read };
+# admin tooling (sudo git / ss / ls) ioctl'ing a socket the session owns
+allow sysadm_t staff_t:unix_stream_socket ioctl;
