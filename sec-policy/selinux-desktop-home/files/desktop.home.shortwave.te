@@ -64,7 +64,9 @@ allow shortwave_t xserver_tmpfs_t:file { map read write };
 corecmd_exec_bin(shortwave_t)
 corecmd_search_bin(shortwave_t)
 corenet_sendrecv_http_client_packets(shortwave_t)
-corenet_sendrecv_unlabeled_packets(shortwave_t) # port 5353
+# r19: the unlabeled_t blanket is replaced by dynamic_packet_t
+# (declared in desktop.system.network.te), which labels the same
+# traffic instead of leaving it unlabelled.
 corenet_tcp_connect_http_port(shortwave_t)
 corenet_udp_bind_generic_node(shortwave_t)
 corenet_udp_bind_howl_port(shortwave_t)

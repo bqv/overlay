@@ -95,7 +95,9 @@ corenet_sendrecv_http_client_packets(gajim_t)
 # blanket-covered flow into a denied one.
 allow gajim_t jabber_client_client_packet_t:packet { send recv };
 
-corenet_sendrecv_unlabeled_packets(gajim_t)
+# r19: the unlabeled_t blanket is replaced by dynamic_packet_t
+# (declared in desktop.system.network.te), which labels the same
+# traffic instead of leaving it unlabelled.
 corenet_tcp_connect_http_port(gajim_t)
 corenet_tcp_connect_jabber_client_port(gajim_t)
 dbus_list_system_bus_runtime(gajim_t)

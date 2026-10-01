@@ -829,3 +829,66 @@ It still described the local gate hop as a "known residual ... continues at a lo
 rate" (fixed in r15) and predated the boot finding, so it now says what is
 actually true, keeps the deploy order, and points at this ledger for the live
 state. The old `network-draft.te` is kept for the reasoning it records.
+
+## Round 19b - the blankets are gone, replaced by a named type
+
+### `dynamic_packet_t` replaces six `corenet_sendrecv_unlabeled_packets()` grants
+
+The objective says no wholesale `unlabeled_t` grants, and six per-domain blankets
+survived from before the labelling existed. They are gone now, replaced by a type
+of our own:
+
+    type dynamic_packet_t;
+    typeattribute dynamic_packet_t packet_type;
+
+applied by fallbacks in **both** chains - `ct state new`, non-loopback, placed
+*before* the port maps so a named label always wins:
+
+    ct state new meta iifname != "lo" meta secmark set "unclassified"
+    ct state new meta secmark set tcp dport map @secmapping_in     # and it wins
+
+Granted to the domains that genuinely use unnameable ports: `mozilla_t` (WebRTC
+picks UDP ports per call), `gajim_t`, `shortwave_t` (station ports), 
+`stremio_server_t` (BitTorrent picks its listen port at runtime and receives
+inbound peers on it), `ssh_t` (any port), `staff_t`.
+
+**Honesty about what this changes.** For those seven domains it is
+coverage-equivalent to the blankets they replace - saying otherwise would be
+marketing. What it does change: the traffic is now *labelled* with a type we
+control and granted per domain, and `unlabeled_t` packets should no longer occur
+at all, so any future one is a signal that labelling broke rather than a fact of
+life. The genuine tightening is for flows *no* domain is granted: an inbound
+connection to an unclassified local port is still denied for everyone else.
+
+Verified in the loaded policy and in conntrack, not in the source:
+
+| check | result |
+|---|---|
+| a new unclassified off-box flow | `secctx=dynamic_packet_t` |
+| named labels still win (`:443`, `:8080`, `:55555`) | `http_client`, `http_client`, `local` |
+| domains holding `dynamic_packet_t` | all seven |
+| **domains still holding `unlabeled_t`** | **none** |
+
+One nftables detail: `dynamic` is a **reserved word**, so the secmark object is
+named `unclassified` while the policy type stays `dynamic_packet_t`.
+
+### A correction I owe the ledger: the DHCP "proof" was not one
+
+r18 recorded the `dhcpc_t` blanket as "removed on evidence" - the lease renewed at
+08:16 and there were zero `dhcpc_t` packet denials. That was wrong, and in a way
+worth writing down: the hand-written **`desktop.system.cil`** carried its own
+`(allow dhcpc_t unlabeled_t (packet (send recv)))`, independent of the `.te` line
+that was deleted. The blanket was still in force, so the zero-denial observation
+was equally consistent with the blanket covering an unlabelled path. It proved
+nothing.
+
+Both sources are removed now. `dhcpc_t` holds `dynamic_packet_t` as an explicit
+safety net instead - it is the one flow whose failure would cut this box off the
+network - and it can be dropped once a renewal shows `dhcpd_client_packet_t` in
+conntrack. The ports are mapped in both directions (67/68 and 546/547), so it
+should never be used.
+
+**Trap for the list: the same grant can exist in two places.** `desktop.system.cil`
+is a hand-written module alongside the `.te` files, and `grep`ing the source tree
+for a blanket finds only one of them. Grep the **store** (`/var/lib/selinux/...`)
+when retiring a grant - that is what the policy actually carries.

@@ -6,6 +6,9 @@ gen_require(`
 	type sysadm_t;
 	type stremio_server_t;
 	type mozilla_t;
+	type gajim_t;
+	type shortwave_t;
+	type ssh_t;
 	type nginx_t;
 	type staff_bubblewrap_t;
 	type dhcpc_t;
@@ -138,6 +141,40 @@ allow sysadm_t adb_client_packet_t:packet { send recv };
 # this type can only ever cover traffic that does not leave the machine.
 type local_packet_t;
 typeattribute local_packet_t packet_type;
+
+###
+### dynamic_packet_t - traffic on ports no map can name
+###
+# The last thing that was still reaching for an unlabeled_t blanket. A few
+# applications legitimately use ports that cannot be known in advance:
+# BitTorrent picks its listen port at runtime and receives inbound peer
+# connections on it, WebRTC picks UDP ports per call, internet radio streams on
+# whatever port the station publishes, and ssh can be pointed at any port. The
+# ruleset labels every unclassified non-loopback packet dynamic_packet_t, so this
+# is not an unlabeled_t grant: the traffic is labelled, the label is ours, and it
+# is granted per domain rather than wholesale. It also means unlabeled_t packets
+# should no longer occur at all - any that do are a signal that labelling broke.
+#
+# This replaces six corenet_sendrecv_unlabeled_packets() grants. For the domains
+# listed it is coverage-equivalent; the tightening is that inbound flows no map
+# names are now denied for every domain *not* listed here.
+type dynamic_packet_t;
+typeattribute dynamic_packet_t packet_type;
+allow mozilla_t dynamic_packet_t:packet { send recv };
+allow gajim_t dynamic_packet_t:packet { send recv };
+allow shortwave_t dynamic_packet_t:packet { send recv };
+allow stremio_server_t dynamic_packet_t:packet { send recv };
+allow ssh_t dynamic_packet_t:packet { send recv };
+allow staff_t dynamic_packet_t:packet { send recv };
+# dhcpcd keeps it as a safety net, and the reason is worth recording honestly:
+# the r18 note claimed the zero-denial observation after the 08:16 renewal proved
+# the labelling. It did not - the CIL still carried `(allow dhcpc_t unlabeled_t)`,
+# which would have covered any unlabelled path silently. The ports are mapped by
+# definition (67/68 and 546/547, both directions), so this should never be used;
+# a renewal that shows `dhcpd_client_packet_t` in conntrack is what would let it
+# be dropped. Losing the lease is the one flow failure that would cut this box off
+# the network, so it keeps a net until that observation exists.
+allow dhcpc_t dynamic_packet_t:packet { send recv };
 
 allow sysadm_t local_packet_t:packet { send recv };
 allow staff_t local_packet_t:packet { send recv };

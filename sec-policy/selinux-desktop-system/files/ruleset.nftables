@@ -25,6 +25,12 @@ table inet filter {
 	secmark mosh_server {
 		"system_u:object_r:mosh_packet_t:s0"
 	}
+
+	# traffic on ports no map can name (BitTorrent listen ports, WebRTC, odd
+	# station ports, ssh on a custom port) - see desktop.system.network.te
+	secmark unclassified {
+		"system_u:object_r:dynamic_packet_t:s0"
+	}
 	secmark mdns {
 		"system_u:object_r:mdns_packet_t:s0"
 	}
@@ -124,6 +130,8 @@ table inet filter {
 		#    would override that with the other side's type (a browser's
 		#    loopback flow to :80 would become http_server instead of
 		#    http_client, and the browser's next receive would be denied).
+		# unclassified inbound keeps a label instead of being left unlabeled
+		ct state new meta iifname != "lo" meta secmark set "unclassified"
 		ct state new meta iifname != "lo" meta secmark set tcp dport map @secmapping_in
 		ct state new meta iifname != "lo" meta secmark set udp dport map @secmapping_in
 
@@ -153,6 +161,7 @@ table inet filter {
 		ct state established,related meta secmark set ct secmark
 
 		ct state new oif lo meta secmark set "local"
+		ct state new meta oifname != "lo" meta secmark set "unclassified"
 
 		ct state new meta secmark set tcp dport map @secmapping_out
 		ct state new meta secmark set udp dport map @secmapping_out

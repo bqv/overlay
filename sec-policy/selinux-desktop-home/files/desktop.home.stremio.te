@@ -110,7 +110,9 @@ allow stremio_server_t xserver_t:dir { getattr search };
 corecmd_exec_bin(stremio_server_t)
 corecmd_exec_shell(stremio_server_t)
 corecmd_search_bin(stremio_server_t)
-corenet_sendrecv_unlabeled_packets(stremio_server_t)
+# r19: the unlabeled_t blanket is replaced by dynamic_packet_t
+# (declared in desktop.system.network.te), which labels the same
+# traffic instead of leaving it unlabelled.
 corenet_tcp_bind_generic_node(stremio_server_t)
 corenet_tcp_connect_hplip_port(stremio_server_t)
 corenet_tcp_connect_inetd_child_port(stremio_server_t)

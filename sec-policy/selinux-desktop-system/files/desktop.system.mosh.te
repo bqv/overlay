@@ -38,5 +38,7 @@ domain_use_interactive_fds(mosh_t)
 files_read_etc_files(mosh_t)
 miscfiles_read_localization(mosh_client_t)
 
-corenet_sendrecv_unlabeled_packets(staff_t)
+# r19: the unlabeled_t blanket is replaced by dynamic_packet_t
+# (declared in desktop.system.network.te), which labels the same
+# traffic instead of leaving it unlabelled.
 
