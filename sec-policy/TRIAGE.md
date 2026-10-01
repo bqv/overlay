@@ -888,6 +888,22 @@ network - and it can be dropped once a renewal shows `dhcpd_client_packet_t` in
 conntrack. The ports are mapped in both directions (67/68 and 546/547), so it
 should never be used.
 
+### The one transient this creates, and why it self-heals
+
+The migration removes the blankets while flows that were labelled *before* the
+fallback existed are still alive. A conntrack entry keeps the label it was given,
+so those packets stay `unlabeled_t` and - with the blanket gone - are now denied
+until the connection recycles. It shows up immediately: `stremio_server_t ->
+unlabeled_t:packet` on its long-lived tracker/CDN connections, and 48 unlabelled
+entries still in conntrack (5228, 8008, 8081, a couple of ephemeral ones).
+
+That is the same shape as the r15 gate-hop residual, it clears as connections
+recycle, and forcing it would mean a conntrack flush, which is never done here.
+Worth knowing before the switch: a flow that predates the *ruleset*, not just this
+change, is the thing that can be denied on the first packet after enforcement is
+turned on. New flows are labelled correctly - verified with a fresh unclassified
+connection, which came out `dynamic_packet_t`.
+
 **Trap for the list: the same grant can exist in two places.** `desktop.system.cil`
 is a hand-written module alongside the `.te` files, and `grep`ing the source tree
 for a blanket finds only one of them. Grep the **store** (`/var/lib/selinux/...`)
