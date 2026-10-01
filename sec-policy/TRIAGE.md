@@ -534,3 +534,125 @@ and it is the same toolchain breakage that already made `audit2allow` unusable.
 - `sysadm_t` -> `staff_t:unix_stream_socket ioctl`: admin tooling only.
 - `sysadm_t` -> self `execheap`: a CEF render thread; needs the `allow_execheap`
   boolean, i.e. a deliberate W^X relaxation.
+
+## Round 17 - the boot question resolved, and the boot path cleared
+
+### It is answered: a reboot brings the box up enforcing
+
+The goal said the boot-time question had to be resolved before any switch. It is:
+
+    $ objdump -T /sbin/init | grep selinux
+      is_selinux_enabled
+      selinux_init_load_policy
+
+OpenRC's init imports `selinux_init_load_policy`, which is the libselinux entry
+point that reads `/etc/selinux/config` and applies the mode. That is the
+`enforcing=1 old_enforcing=0 res=1` record at t=7.3 s in the boot log, and the
+AVCs at t=11.5 s carrying `permissive=0` prove the mode was still enforcing
+*after* the policy load at t=7.9 s. The initramfs carries no policy (only
+`lib64/libselinux.so.1`), so this is the mechanism.
+
+**Consequence, and it is the important one: the running permissive state is a
+leftover.** It cannot be the boot default - the config has said `enforcing` since
+2025-08-20, nothing on the box calls `setenforce`, and OpenRC applies the config
+at every boot. So an explicit `setenforce 0` was run after that boot 30 days ago
+(the machine was rebooted three times that evening, 20:03/20:11/20:15), and
+nothing has reset it since because the box has not rebooted.
+
+So the "switch" is not a separate step waiting to be taken: **any reboot brings
+the box up enforcing.** That is a materially different risk position from "we are
+permissive and will decide later", and it is why this round went to the boot path
+first.
+
+### The boot path, cleared from the only hard evidence available
+
+`/var/log/dmesg` is the boot log of the running kernel, and its AVCs carry
+`permissive=0` - they were *enforced*, not merely logged. That makes it the only
+direct evidence of what a real enforcing boot hits. Every pattern in it:
+
+| enforced at boot | disposition |
+|---|---|
+| `mount_t` -> `portage_tmp_t:file {read}` x12, `dmesg_t` -> same x2 | **moot** - that was the mislabelled `/usr/lib/locale/locale-archive`, now correctly `locale_t` (the *user* component is still `staff_u`, which `restorecon` would fix) |
+| `alsa_t` -> `device_t:chr_file {read}` x3 (`controlC1/C2`) | **stale** - every device under `/dev/snd` is `sound_device_t` now and `alsa_t` may read it, so nothing to do |
+| `mount_t` -> `initrc_tmp_t:dir {mounton}` | already allowed |
+| `kmod_t` -> `console_device_t:chr_file {read}` x4 | granted: `term_read_console(kmod_t)`, the interface `dmesg_t` already uses |
+| `udev_t` -> `alsa_t:process {noatsecure rlimitinh siginh}` | `dontaudit` - inherited-fd bookkeeping, transition not blocked, nothing fails |
+| `systemd_tmpfiles_t` -> `init_t:fd {use}` | `dontaudit` - inheriting the console fd from init; it only loses console printing |
+| `udev_t` -> `unlabeled_t:lnk_file {read}` x1 (`name="run"`) | left; `/run` and `/var/run` are labelled `var_run_t` and matchpathcon agrees, so this is a stale link rather than a labelling gap |
+
+### A real defect found outside the policy: the `/var/tmp` mount never happened
+
+`/etc/fstab` line 36 asked for the portage build directory on a 32 GiB tmpfs:
+
+    tmpfs-var-tmp /var/tmp tmpfs defaults,size=32768M,rootcontext=system_u:object_r:tmp_:s0
+
+`tmp_:s0` is not a type - it is a typo for `tmp_t`. Tested both forms with a
+scratch tmpfs mount (never touching /var/tmp):
+
+    rootcontext=system_u:object_r:tmp_t:s0  -> mounts, label tmp_t
+    rootcontext=system_u:object_r:tmp_:s0   -> "wrong fs type, bad option, bad superblock"
+
+So that mount has failed on every boot and `/var/tmp` has been a plain directory
+on the `/var` subvolume (84% full) instead of the intended tmpfs. Fixed, with a
+dated backup at `/etc/fstab.20261001.bak`, `findmnt --verify` clean, and the
+mount deliberately **not** performed by hand: it takes effect at the next boot,
+where `/var/tmp` becomes RAM-backed and the current contents are hidden. Revert
+by restoring the backup if a RAM-backed build directory is not wanted.
+
+Note the adjacent, separate boot message - `SELinux: Context /run is not valid
+(left unmapped)` - is **not** this bug and is harmless: `/run` is correctly
+labelled `var_run_t`, so the mount is simply unmapped at the mount-option level
+while the files still get their policy labels.
+
+### The cushion is gone, so `staff_t` got the same audit
+
+Dropping the flags removed the safety net that would have kept the session
+permissive if the box rebooted: from now on a reboot enforces `staff_t` too, and
+`staff_t` is both the user's session and this agent. So the same
+denial-vs-policy check was run for it over the retained logs: 33 distinct
+patterns, of which three were real gaps (everything else was already allowed,
+including the `process2` transitions and the `devpts_t` grant from r16):
+
+| pattern | disposition |
+|---|---|
+| `staff_t -> devpts_t:chr_file`, `-> staff_git_t/java_t:process2`, `-> proc_psi_t`, `-> systemd_sessions_runtime_t` | already allowed - verified with the full allow listing, not a `-p` filter (see the trap below) |
+| `staff_t -> src_t:file { open read }` (30) | granted. `/usr/src` is `src_t`; refpolicy has `files_search_src()` for the directory but **no** interface for reading the files in it, so the read is a raw allow |
+| `staff_t -> self:icmp_socket` + `-> icmp_packet_t:packet` | granted. The sandbox's `no_new_privs` means `ping` never transitions to `ping_t` and stays in `staff_t`; it then needs the raw ICMP socket and the packet label the ruleset puts on ICMP. refpolicy has no interface for either - `ping_t`'s own grants are raw allows too |
+| `staff_t -> portage_db_t:file { open }` | granted (querying the installed-package database) |
+
+**Trap worth keeping:** `sesearch -A -p read,write` (a comma list) reported
+`devpts_t` and the `process2` transitions as denied when the loaded policy
+contains them verbatim. Checking one permission at a time, or listing the allow
+line without `-p`, gives the right answer. Two of this round's "gaps" were that
+artefact and needed no change at all.
+
+### dontaudit rules are written but globally stripped at load
+
+Both of this round's `dontaudit` rules are in the store's module CIL -
+
+    (dontaudit udev_t alsa_t (process (noatsecure siginh rlimitinh)))
+    (dontaudit systemd_tmpfiles_t init_t (fd (use)))
+
+- yet `sesearch -D` finds **no** dontaudit rule anywhere in the running policy,
+for any domain. The store has dontaudits switched off (`semodule -DB`, which is
+what one runs while debugging denials), and that strips them at link time.
+
+What this does and does not mean:
+
+- **It never changes an access decision.** dontaudit controls whether a denial is
+  *logged*; the access is denied either way. So enforcement readiness is
+  unaffected, and re-enabling them (`semodule -B`) would not grant anything.
+- It does mean the entire "informational" class this ledger has been marking as
+  `dontaudit` material - the 16 inherited-fd `noatsecure rlimitinh siginh`
+  suppressions in this file among them - has been **logging all along**. That is
+  worth knowing when a capture looks noisier than the policy suggests, and it is
+  why counting AVCs overstates what would actually fail.
+- Left as-is: switching a global store flag is the operator's call, not a side
+  effect of writing a module, and nothing in the objective needs it.
+
+### Post-merge triage
+
+Strictly after the last r16 merge, the log holds **2 AVCs**, both the documented
+`sysadm_t` -> `unlabeled_t:packet` off-box category (one from `libuv-worker`).
+Nothing from the domains whose flags were dropped - though the desktop is idle,
+so that is a weak signal for the app domains rather than a strong one.

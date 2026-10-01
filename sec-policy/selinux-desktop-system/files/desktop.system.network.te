@@ -14,8 +14,10 @@ gen_require(`
 	type http_server_packet_t;
 	type adb_client_packet_t;
 	type adb_server_packet_t;
+	type icmp_packet_t;
 	type dhcpd_client_packet_t;
 	class packet { recv send };
+	class icmp_socket { create getopt read setopt write };
 ')
 
 ########################################
@@ -151,3 +153,13 @@ allow dhcpc_t dhcpd_client_packet_t:packet { send recv };
 #   desktop.system.base.te: corenet_sendrecv_unlabeled_packets(dhcpc_t)
 # It is only still there because dhcpcd leases are long and the first post-merge
 # capture may not catch a renewal.
+
+###
+### ICMP - ping from the session
+###
+# The session's sandbox sets no_new_privs, so ping does not transition to ping_t
+# and stays in staff_t. It then needs the ICMP socket itself and the packet label
+# the ruleset puts on ICMP (icmp_packet_t via the "icmp_server" secmark).
+# refpolicy has no interface for either - ping_t's own grants are raw allows.
+allow staff_t self:icmp_socket { create getopt read setopt write };
+allow staff_t icmp_packet_t:packet { send recv };
