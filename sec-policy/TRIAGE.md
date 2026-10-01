@@ -777,3 +777,55 @@ domain here; `mta_t` does not exist in this policy) need no change. `gajim_t`
 does **not**, so labelling 5222 without granting the type would have converted a
 blanket-covered flow into a denied one - the `mozilla_t`/`local_packet_t` mistake
 from r15. The grant and the label therefore land in the same change.
+
+## Round 19 - the census tools finished, and 5228 attributed
+
+### `ss` needed two interfaces, not one
+
+`domain_read_all_domains_state` is **dir-only** (`kernel_search_proc` plus
+`domain:dir list_dir_perms`), so granting it removed the 17k directory denials but
+left 113 `process getattr` ones in the very next window. The companion interface
+`domain_getattr_all_domains` is literally `allow $1 domain:process getattr`, and
+that is what completes the `/proc` walk. The rest of what a root-run census needs:
+`CAP_SYS_PTRACE` and `dac_read_search` (reading other processes' `/proc`), the
+`cap_userns` form of `sys_ptrace`, and the last socket classes
+(`rawip_socket`, `packet_socket`, `netlink_audit_socket`).
+
+Verified the way that matters: run `ss -tulpnH` and `ss -tanpH` and count - **zero**
+denials, where the same two runs produced ~8153 before r18.
+
+### `sudo nft -f <file in the overlay>`
+
+The netfilter tools run as `iptables_t`, so loading a ruleset straight from the
+repo tripped `iptables_t -> portage_ebuild_t:dir search`. Granted the same repo
+access `staff_sudo_t` has, and proved it: `nft -c -f` on the repo file now
+produces no denials.
+
+### `:5228` is now attributed to sockets, not just a `comm`
+
+With `ss -p` working again, the socket owners can be read directly:
+
+    qemu-system-x86  (sysadm_t)  -> 142.251.1.188:5228
+    netsimd          (sysadm_t)  -> 209.85.233.188:5228, 173.194.220.188:5228
+
+`netsimd` is the Android emulator's network simulator: it holds the guest's FCM
+connection. That is the Android emulator doing what an emulator does, and the
+remote port is Google's choice, so no port map can name it - the same conclusion
+as r17b, now with the sockets rather than a softirq `comm` behind it.
+
+The other two unattributed flows are now closed as far as they can be:
+
+- `192.168.1.104:8008` - every entry is **TIME-WAIT** with no owning process left,
+  so the flow is already gone; it ages out of conntrack.
+- SSDP `:1900` - no socket holds 1900, so the flow was inbound multicast to a
+  port nothing was listening on.
+
+Both stay unlabelled on purpose: there is nothing to attribute, and labelling a
+flow whose domain has no allow is a regression, not coverage.
+
+### `wip/README.md` rewritten
+
+It still described the local gate hop as a "known residual ... continues at a low
+rate" (fixed in r15) and predated the boot finding, so it now says what is
+actually true, keeps the deploy order, and points at this ledger for the live
+state. The old `network-draft.te` is kept for the reasoning it records.

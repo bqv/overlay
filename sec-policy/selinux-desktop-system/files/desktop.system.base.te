@@ -47,7 +47,11 @@ gen_require(`
   class fd use;
   class file { create getattr map open read unlink write relabelfrom relabelto };
   class dir { create getattr open read search relabelfrom relabelto };
-  class capability { dac_override net_admin };
+  class capability { dac_override dac_read_search net_admin sys_ptrace };
+  class cap_userns sys_ptrace;
+  class rawip_socket getattr;
+  class packet_socket getattr;
+  class netlink_audit_socket getattr;
   class unix_dgram_socket { getattr sendto };
   class unix_stream_socket { getattr ioctl read write };
   class tcp_socket { getattr name_bind };
@@ -68,6 +72,7 @@ gen_require(`
   type init_t;
   type systemd_tmpfiles_t;
   type ss_t;
+  type iptables_t;
   type portage_db_t;
   type var_run_t;
 ')
@@ -348,3 +353,20 @@ allow staff_t portage_db_t:file { getattr open read };
 domain_read_all_domains_state(ss_t)
 allow ss_t domain:{ tcp_socket udp_socket unix_stream_socket unix_dgram_socket } getattr;
 allow ss_t domain:{ netlink_route_socket netlink_kobject_uevent_socket netlink_selinux_socket netlink_generic_socket } getattr;
+
+# --- r18b: what the census and netfilter tools still needed ---
+#
+# domain_read_all_domains_state is dir-only (kernel_search_proc + domain:dir
+# list perms), so `ss -p` still needed the companion interface for the process
+# class - 113 denials in one window. The rest is what a root-run census needs:
+# CAP_SYS_PTRACE to read other processes' /proc entries, the remaining socket
+# classes (rawip/packet/netlink_audit), and dac_read_search.
+domain_getattr_all_domains(ss_t)
+allow ss_t self:capability { dac_read_search sys_ptrace };
+allow ss_t self:cap_userns sys_ptrace;
+allow ss_t domain:{ rawip_socket packet_socket netlink_audit_socket } getattr;
+
+# `sudo nft -f <file>` runs as iptables_t, so loading a ruleset straight out of
+# the overlay needs the same repo access staff_sudo_t got.
+portage_read_ebuild(iptables_t)
+allow iptables_t portage_ebuild_t:dir search;

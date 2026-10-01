@@ -1,77 +1,55 @@
-# wip/ - the network half, in progress
+# wip/ - historical: the network half is done
 
-Nothing in this directory is built or loaded. It holds the design record for the
-network side while the implementation moves into the packages.
+This directory holds the design record from when the network labelling was still
+being worked out. That work is finished and deployed; the live state, the
+evidence and the open questions are in `../TRIAGE.md` and in
+`../selinux-desktop-system/files/{desktop.system.network.te,ruleset.nftables}`.
 
-## Status
+Kept rather than deleted because `network-draft.te` records the two options that
+were weighed for the mosh ports and why labelling won over a blanket
+`unlabeled_t` grant - the same reasoning has since been applied across the whole
+ruleset.
 
-The packet labelling was already live, and the SELinux side is now started.
+## What has changed since this was written
 
-| piece | state |
-|---|---|
-| `ruleset.nftables` secmark labelling (ssh/http/dns/icmp) | **live** - deployed via `/var/lib/nftables/rules-save`, `rc-service nftables` started |
-| packet types (`ssh_client_packet_t`, ...) | exist - the `base` module declares 471 of them |
-| `mosh_packet_t` + labelling of 60001/60002 | **live** - `../selinux-desktop-system/files/desktop.system.network.te`, loaded, and deployed to the ruleset |
-| `staff_t -> mosh_packet_t { send recv }` | implemented, same module |
-| `stremio_server_t -> ssh_client_packet_t { send recv }` | live |
-| `nginx_t -> http_server_packet_t` (serves :80) | **live** - under enforcement nginx would otherwise stop answering the web UI |
-| `nginx_t -> http_client_packet_t` + `8080 : "http_client"` | live - the local gate hop |
-| `mdns_packet_t` + 5353 labelled, allows for staff_t/stremio_server_t/staff_bubblewrap_t | **live** |
-| per-tier `*_net_t` domains | **not used** - the packet-label approach below made them unnecessary; the stub they lived in was promoted into the network module and they were dropped |
-
-## The decision
-
-The captures showed 59 `packet` denials: 53 send + 16 recv from `staff_t` to
-`unlabeled_t` (mosh, UDP 60001/60002), and 2+2 from `stremio_server_t` to
-`ssh_client_packet_t`.
-
-The cause of the mosh ones: `secmapping_out` only labelled ports 22, 53, 80 and
-443, so every other flow arrived as `unlabeled_t`. Two ways out - allow
-`unlabeled_t` wholesale for `staff_t`, or label mosh's ports too. **The ports
-are being labelled**, so the secmark keeps covering the traffic instead of the
-policy granting a blanket exception. `network-draft.te` records both options
-and the evidence; the module implements the second.
+- The `nginx_t -> unlabeled_t` residual on the local gate hop is **fixed**. The
+  ruleset re-derives the label for established flows whose conntrack entry
+  predates it (`ct direction original`, non-loopback), verified by reading the
+  `secctx` back out of conntrack: `http_server_packet_t` where it used to be
+  unlabelled, including the sessions that carry the web UI.
+- The ruleset also labels DHCP (67/68/546/547), adb and the emulator
+  (5037/5554/5555), mDNS for `sysadm_t`, Stremio's `:11471`, the mail ports
+  (25/465/587/110/995/143/993), XMPP (5222/5223), and every unclassified
+  loopback flow (`local_packet_t`, `oif lo` only).
+- The per-tier `*_net_t` domains remain dropped, as recorded below.
 
 ## Deploying
 
-Both halves are live. The order matters, and getting it wrong looks like a
-ruleset bug rather than an ordering mistake:
+The order still matters, and getting it wrong looks like a ruleset bug rather
+than an ordering mistake:
 
     # 1. the policy first - a secmark whose context names a type the running
     #    policy does not define is rejected at load time with "Invalid argument"
     sudo make -C ../selinux-desktop-system merge
     # 2. then the ruleset
-    sudo nft -f ../selinux-desktop-system/files/ruleset.nftables
+    sudo nft -c -f ../selinux-desktop-system/files/ruleset.nftables && \
+      sudo nft -f ../selinux-desktop-system/files/ruleset.nftables
     sudo rc-service nftables save
 
-## Known residual
+## Safety notes (all still true)
 
-`nginx_t -> unlabeled_t` on 127.0.0.1:33278 <-> 127.0.0.1:8080 continues at a
-low rate (~12/min). It is the *legacy* connection: the output chain labels
-`ct state new` flows only, and that conntrack entry predates the 8080 mapping,
-so it carries no secmark. New connections are labelled correctly (verified with
-a local request to the gate, which produced no new denial).
-
-It clears when the connection recycles. It was deliberately **not** forced with
-a conntrack flush: that would reset the TCP session carrying the agent's own
-web UI.
-
-## Safety notes
-
-- The ruleset is labelling-only: every chain is `policy accept` and there are
-  no `drop`/`reject` rules, so loading it cannot block traffic. Its one sharp
-  edge is `flush ruleset`, which clears *all* tables - check `nft list tables`
-  first, and run `nft -c` before `nft -f`.
-- Loading a secmark whose type the running policy does not define fails with
-  "Invalid argument", so the module must be loaded before the ruleset.
-- SELinux stays permissive. Enforcement is the only way a policy mistake locks
-  the box out, so it is a deliberate, separate step.
+- The ruleset is labelling-only: every chain is `policy accept` and there are no
+  drop/reject rules, so loading it cannot block traffic. Its one sharp edge is
+  `flush ruleset`, which clears *all* tables - check `nft list tables` first, and
+  always run `nft -c` before `nft -f`.
+- Conntrack is never flushed: the TCP session carrying the agent's own web UI
+  depends on it.
+- SELinux is permissive *now*, but see the boot note in `../TRIAGE.md`: OpenRC
+  applies `SELINUX=enforcing` from `/etc/selinux/config` at every boot, and the
+  current permissive state is a leftover `setenforce 0`. A reboot therefore comes
+  up enforcing.
 
 ## Still to do
 
-1. **Re-capture with mosh running** and confirm the `staff_t -> unlabeled_t`
-   denials are gone and the traffic now matches `mosh_packet_t`. This needs a
-   live mosh session - there is no way to prove it without the traffic.
-4. If the per-tier network separation is still wanted later, the `*_net_t`
-   domains are the way - but they need roles and entrypoints, and the packet
-   labels already give per-flow control without them.
+- Confirm mosh matches `mosh_packet_t`. The label and the allow are in place, but
+  only real mosh traffic can prove the mapping, and there has been none since.
