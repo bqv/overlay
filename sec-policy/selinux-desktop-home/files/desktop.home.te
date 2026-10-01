@@ -303,6 +303,16 @@ allow java_t user_home_t:dir watch;
 # ~/tmp is the build's scratch space (create/unlink/lock/map on the tmpfs mount)
 manage_dirs_pattern(java_t, user_tmpfs_t, user_tmpfs_t)
 manage_files_pattern(java_t, user_tmpfs_t, user_tmpfs_t)
+# r20: the Gradle daemon binds a localhost port for its workers and listens on
+# it. r16 granted the bind-any-unreserved-port and missed listen/accept itself, so
+# a build would fail as soon as enforcement came on.
+allow java_t self:tcp_socket { listen accept };
+corenet_tcp_bind_generic_node(java_t)
+corenet_udp_bind_generic_node(java_t);
+# manage_files_pattern covers read/write but not mmap, and the build mmaps its
+# scratch files in the user tmpfs.
+allow java_t user_tmpfs_t:file map;
+
 # The JVM allocates executable memory for its JIT: 99 denials. This is a W^X
 # relaxation, but scoped to java_t rather than the global allow_execmem boolean,
 # and without it Java does not run at all.

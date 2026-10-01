@@ -908,3 +908,80 @@ connection, which came out `dynamic_packet_t`.
 is a hand-written module alongside the `.te` files, and `grep`ing the source tree
 for a blanket finds only one of them. Grep the **store** (`/var/lib/selinux/...`)
 when retiring a grant - that is what the policy actually carries.
+
+## Round 20 - the full-log sweep, java_t, nuvio and the browser
+
+### A whole-log sweep, and a warning about the tool that does it
+
+Every distinct denial in **all** retained logs - 515 patterns - was checked
+against the loaded policy, one permission at a time. The screen flagged ten
+patterns as still-denied; three were real, and the rest were already documented
+(sysadm_t's emulator traffic, stremio's pre-fallback flows).
+
+**The warning matters more than the result**: the sweep reported
+`staff_t -> staff_git_t:process2 { nnp_transition nosuid_transition }` as denied
+when the loaded policy contains that allow verbatim, and did the same for java_t's
+tmpfs permissions. Its per-pattern verdicts are therefore a *screen*, not a
+finding - each one needs `sesearch` run directly on it before it is believed. The
+same lesson has now bitten this ledger three times (the `-p` comma list, `-t self`,
+and this), so it is recorded as a standing rule rather than an incident.
+
+### java_t could not listen
+
+The screen's real hits were all java_t, and r16 had granted `bind` on unreserved
+ports but **not `listen`/`accept` themselves**:
+
+| what was missing | why it matters |
+|---|---|
+| `java_t self:tcp_socket { listen accept }` | the Gradle daemon binds a localhost port for its workers and listens on it - without this a build fails the moment enforcement is on |
+| `corenet_tcp_bind_generic_node`, `corenet_udp_bind_generic_node` | the `node_bind` denials (242 of them) |
+| `java_t user_tmpfs_t:file map` | `manage_files_pattern` covers read/write but **not** mmap, and the build mmaps its scratch files |
+
+Granted and verified; the Android build's toolchain path is now complete.
+
+### nuvio - user request
+
+`~/bin/nuvio` is a wrapper that runs the newest `*.AppImage` from
+`~/bin/appimages` with `APPIMAGE_EXTRACT_AND_RUN=1`, **because this host has no
+`/dev/fuse`** - so the payload unpacks into `$TMPDIR` and executes from there.
+Two real blockers, both found by checking the labels rather than the app:
+
+1. **The AppImage was labelled `xdg_downloads_t`** - a Downloads label on a file
+   sitting in `~/bin/appimages` - and `staff_t -> xdg_downloads_t:file execute` is
+   **0**. Under enforcing nuvio could not have started at all. Relabelled with
+   `restorecon` to `user_bin_t`, which its path implies and which `staff_t` may
+   execute.
+2. **`TMPDIR` is unset, so extraction landed in `/tmp`** (`tmp_t`) - and
+   `staff_t -> tmp_t:file execute` is **0**, so the extracted payload could not
+   run even after (1). The wrapper now sets `TMPDIR="$dir/.run"`; that directory
+   is `user_bin_t` and new files created in it inherit that, which was probed
+   rather than assumed.
+
+Verified: running the AppImage runtime produced **zero** AVCs. Everything else
+nuvio needs was already in place, because it runs in `staff_t`:
+`sound_device_t` with `{ append getattr ioctl lock map open read write }`,
+`pipewire_t`/`pulseaudio_t` unix sockets, `dri_device_t` with the same full set
+plus `map`, `http_client`/`dns_client` through `client_packet_type`, and
+`dynamic_packet_t` for stream ports no map names.
+
+A scan of `~/bin` for the same class of problem found nuvio was the only
+exec-hostile case: `~/bin/stremio-server` is deliberately `stremio_server_exec_t`
+(that label *is* the domain transition), and `~/bin/ds-usage` is `user_home_t` -
+executable by `staff_t`, just untidy.
+
+### Firefox video and sound - user request, verified rather than changed
+
+`mozilla_t` already holds everything media needs, and there are **zero** denials
+in those classes:
+
+| access | held |
+|---|---|
+| `sound_device_t:chr_file` | `{ append getattr ioctl lock map open read write }` |
+| `dri_device_t:chr_file` (VA-API/rendering) | the same full set |
+| `v4l_device_t:chr_file` (camera) | `{ getattr ioctl lock open read }` |
+| `pipewire_t:unix_stream_socket` | `connectto` |
+| `pulseaudio_t:unix_stream_socket` | present (`mozilla_t` is a `pulseaudio_client`) |
+
+So no change was needed: the browser's audio and accelerated video are already
+permitted, with the actual devices (`/dev/dri/renderD128`, `/dev/snd/controlC0`)
+labelled `dri_device_t` and `sound_device_t` as the policy expects.
