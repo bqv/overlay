@@ -88,6 +88,7 @@ gen_require(`
   type lib_t;
   type ssh_t;
   type staff_git_t;
+  type sysctl_irq_t;
   type bin_t;
   type usr_t;
   type user_home_dir_t;
@@ -381,3 +382,27 @@ search_dirs_pattern(java_t, xdg_data_t, xdg_data_t)
 read_lnk_files_pattern(java_t, xdg_data_t, xdg_data_t)
 getattr_dirs_pattern(java_t, git_home_t, git_home_t)
 allow java_t staff_t:unix_stream_socket ioctl;
+
+# --- r20d: the two live gaps in the session's own domain ---
+#
+# Both were running AVCs when this was written, not hypotheticals.
+#
+# 1. execmem. `comm="C2 CompilerThread"` (JIT compiler thread) in staff_t - the
+#    JVM inside nuvio's AppImage, which runs in the session's domain rather than
+#    java_t. java_t has had this since r16; without it for staff_t the JVM fails
+#    the moment enforcement comes on, and the DSH agent's own node runtime is in
+#    the same domain. A deliberate W^X relaxation for the session, recorded as
+#    such rather than granted quietly.
+allow staff_t self:process execmem;
+# 2. files created directly in the home directory. A new file there inherits the
+#    home *directory* type, and staff_t could not read or write it (a tool's
+#    settings file). The narrower fix would be a type_transition so new home files
+#    land as user_home_t; this is the pragmatic one.
+allow staff_t user_home_dir_t:file { getattr read write };
+# the user tmpfs, where Gradle's extracted native libraries get mapped
+allow staff_t user_tmpfs_t:file { execute execute_no_trans };
+# `find` walking /proc/sys/kernel/irq (list_dirs_pattern's perms were missing)
+list_dirs_pattern(staff_t, sysctl_irq_t, sysctl_irq_t);
+# git reading ~/.local/share
+search_dirs_pattern(staff_git_t, xdg_data_t, xdg_data_t)
+read_lnk_files_pattern(staff_git_t, xdg_data_t, xdg_data_t)
