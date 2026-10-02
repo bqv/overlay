@@ -12,7 +12,7 @@ gen_require(`
 
 allow mozilla_t unreserved_port_t:tcp_socket name_connect;
 allow mozilla_t user_runtime_t:sock_file write;
-allow mozilla_t var_lib_t:file map;
+mmap_read_files_pattern(mozilla_t, var_lib_t, var_lib_t)
 corenet_sendrecv_dns_client_packets(stremio_server_t)
 corenet_sendrecv_http_client_packets(stremio_server_t)
 # r19: the unlabeled_t blanket is replaced by dynamic_packet_t

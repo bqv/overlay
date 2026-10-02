@@ -47,7 +47,7 @@ sysnet_dns_name_resolve(shortwave_t)
 shortwave_run(staff_t, staff_r)
 shortwave_run(staff_dbusd_t, staff_r)
 
-allow shortwave_t cgroup_t:file { getattr open read };
+read_files_pattern(shortwave_t, cgroup_t, cgroup_t)
 allow shortwave_t self:process getsched;
 allow shortwave_t self:shm { create destroy read unix_read unix_write write };
 allow shortwave_t self:unix_dgram_socket { connect create ioctl };
@@ -57,7 +57,7 @@ allow shortwave_t unreserved_port_t:udp_socket name_bind;
 allow shortwave_t user_runtime_t:sock_file write;
 allow shortwave_t user_tmp_t:file { map open read write };
 allow shortwave_t v4l_device_t:chr_file { getattr ioctl open read write };
-allow shortwave_t var_lib_t:file { getattr map open read };
+mmap_read_files_pattern(shortwave_t, var_lib_t, var_lib_t)
 allow shortwave_t xserver_t:fd use;
 allow shortwave_t xserver_t:unix_dgram_socket sendto;
 allow shortwave_t xserver_tmpfs_t:file { map read write };

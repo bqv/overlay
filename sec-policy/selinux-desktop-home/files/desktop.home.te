@@ -187,7 +187,7 @@ term_use_ptmx(staff_bubblewrap_t)
 userdom_read_user_tmp_files(staff_bubblewrap_t)
 # /proc/pressure: the sandbox reads pressure-stall info.
 kernel_read_psi(staff_bubblewrap_t)
-allow staff_bubblewrap_t xdg_data_t:lnk_file read;
+read_lnk_files_pattern(staff_bubblewrap_t, xdg_data_t, xdg_data_t)
 allow staff_bubblewrap_t self:udp_socket read;
 
 # java binds an unreserved port for its own services.
@@ -246,25 +246,25 @@ allow staff_t self:io_uring allowed;
 #xserver_read_xdm_state(staff_t) # pgrep
 
 allow local_login_t chkpwd_t:process { noatsecure rlimitinh siginh };
-allow local_login_t default_t:dir search;
+search_dirs_pattern(local_login_t, default_t, default_t)
 allow local_login_t self:capability net_admin;
 
-allow staff_t auditd_initrc_exec_t:file getattr;
-allow staff_t avahi_initrc_exec_t:file getattr;
-allow staff_t bluetooth_initrc_exec_t:file getattr;
+getattr_files_pattern(staff_t, auditd_initrc_exec_t, auditd_initrc_exec_t)
+getattr_files_pattern(staff_t, avahi_initrc_exec_t, avahi_initrc_exec_t)
+getattr_files_pattern(staff_t, bluetooth_initrc_exec_t, bluetooth_initrc_exec_t)
 allow staff_t cgroup_t:dir { add_name create write };
 allow staff_t cgroup_t:file write;
-allow staff_t entropyd_initrc_exec_t:file getattr;
+getattr_files_pattern(staff_t, entropyd_initrc_exec_t, entropyd_initrc_exec_t)
 allow staff_t initrc_exec_t:file { entrypoint getattr open read };
 allow staff_t initrc_state_t:dir { add_name create getattr open read remove_name search };
 allow staff_t initrc_state_t:fifo_file create;
 allow staff_t initrc_state_t:file { create getattr open read unlink write };
 allow staff_t initrc_state_t:lnk_file { create read unlink };
-allow staff_t iptables_initrc_exec_t:file getattr;
-allow staff_t nscd_initrc_exec_t:file getattr;
-allow staff_t nsfs_t:file getattr;
-allow staff_t ntpd_initrc_exec_t:file getattr;
-allow staff_t postgresql_initrc_exec_t:file getattr;
+getattr_files_pattern(staff_t, iptables_initrc_exec_t, iptables_initrc_exec_t)
+getattr_files_pattern(staff_t, nscd_initrc_exec_t, nscd_initrc_exec_t)
+getattr_files_pattern(staff_t, nsfs_t, nsfs_t)
+getattr_files_pattern(staff_t, ntpd_initrc_exec_t, ntpd_initrc_exec_t)
+getattr_files_pattern(staff_t, postgresql_initrc_exec_t, postgresql_initrc_exec_t)
 allow staff_t self:capability { audit_write dac_override dac_read_search net_admin setuid sys_ptrace };
 allow staff_t self:process setexec;
 # allow staff_t shadow_t:file { getattr open read };  # IMPOSSIBLE: the base
@@ -277,16 +277,16 @@ allow staff_t self:process setexec;
 allow staff_t sysadm_t:key create;
 allow staff_t sysadm_t:process { noatsecure rlimitinh siginh transition };
 allow staff_t systemd_sessions_runtime_t:fifo_file write;
-allow staff_t tor_initrc_exec_t:file getattr;
+getattr_files_pattern(staff_t, tor_initrc_exec_t, tor_initrc_exec_t)
 allow staff_t var_run_t:dir add_name;
 allow staff_t var_run_t:file { create open write };
 allow staff_t wtmp_t:file write;
 allow staff_t xauth_t:process { noatsecure rlimitinh siginh };
-allow staff_t xauth_tmp_t:file { getattr unlink };
+delete_files_pattern(staff_t, xauth_tmp_t, xauth_tmp_t)
 allow staff_t xserver_t:process { noatsecure rlimitinh };
 allow sysadm_t sysadm_screen_t:process { noatsecure rlimitinh siginh };
 allow xauth_t self:unix_dgram_socket create;
-allow local_login_t shadow_t:file read;
+read_files_pattern(local_login_t, shadow_t, shadow_t)
 allow local_login_t sysadm_t:process { noatsecure rlimitinh siginh };
 
 # steamwebhelper (Steam's CEF) writes to its own UDP socket bound to the mDNS
@@ -315,7 +315,7 @@ corenet_tcp_bind_generic_node(java_t)
 corenet_udp_bind_generic_node(java_t);
 # manage_files_pattern covers read/write but not mmap, and the build mmaps its
 # scratch files in the user tmpfs.
-allow java_t user_tmpfs_t:file map;
+mmap_read_files_pattern(java_t, user_tmpfs_t, user_tmpfs_t)
 
 # The JVM allocates executable memory for its JIT: 99 denials. This is a W^X
 # relaxation, but scoped to java_t rather than the global allow_execmem boolean,
@@ -324,10 +324,10 @@ allow java_t self:process execmem;
 # clang++ reads /etc/env.d/gcc to find the toolchain (etc_runtime_t is /etc/env.d
 # here) - without this the NDK build cannot locate a compiler.
 files_read_etc_runtime_files(java_t)
-allow java_t etc_runtime_t:dir { search getattr };
+search_dirs_pattern(java_t, etc_runtime_t, etc_runtime_t)
 # the daemon reads its cgroup; the NDK executes clang out of lib_t
 fs_read_cgroup_files(java_t)
-allow java_t cgroup_t:dir search;
+search_dirs_pattern(java_t, cgroup_t, cgroup_t)
 allow java_t lib_t:file execute_no_trans;
 term_use_ptmx(java_t)
 # the Gradle daemon talks to its workers over loopback
@@ -349,7 +349,7 @@ kernel_read_psi(staff_t)
 fs_getattr_all_fs(staff_bubblewrap_t)
 # uptime/w count sessions from /run/systemd/sessions/<id>; refpolicy has no
 # interface for that file, so a raw read.
-allow staff_t systemd_sessions_runtime_t:file { getattr open read };
+read_files_pattern(staff_t, systemd_sessions_runtime_t, systemd_sessions_runtime_t)
 # admin tooling (sudo git / ss / ls) ioctl'ing a socket the session owns
 allow sysadm_t staff_t:unix_stream_socket ioctl;
 
@@ -363,9 +363,9 @@ allow sysadm_t staff_t:unix_stream_socket ioctl;
 corecmd_exec_bin(java_t)
 corecmd_exec_shell(java_t)
 can_exec(java_t, usr_t)
-allow java_t bin_t:file { getattr map open read };
-allow java_t usr_t:file { getattr map read };
-allow java_t shell_exec_t:file { getattr map open read };
+mmap_read_files_pattern(java_t, bin_t, bin_t)
+mmap_read_files_pattern(java_t, usr_t, usr_t)
+mmap_read_files_pattern(java_t, shell_exec_t, shell_exec_t)
 # Gradle and Maven fetch dependencies over https
 corenet_sendrecv_http_client_packets(java_t)
 # the daemon's listen port
@@ -373,11 +373,11 @@ corenet_tcp_bind_all_unreserved_ports(java_t)
 # the home root, and the build tree's relabel/scratch behaviour
 allow java_t user_home_dir_t:file { getattr read write };
 allow java_t user_tmpfs_t:file { execute execute_no_trans relabelfrom };
-allow java_t user_tmpfs_t:dir getattr;
+getattr_dirs_pattern(java_t, user_tmpfs_t, user_tmpfs_t)
 allow java_t user_home_t:file relabelto;
 allow java_t user_home_t:dir { relabelfrom relabelto };
-allow java_t user_bin_t:dir search;
-allow java_t xdg_data_t:dir { search getattr };
-allow java_t xdg_data_t:lnk_file read;
-allow java_t git_home_t:dir getattr;
+search_dirs_pattern(java_t, user_bin_t, user_bin_t)
+search_dirs_pattern(java_t, xdg_data_t, xdg_data_t)
+read_lnk_files_pattern(java_t, xdg_data_t, xdg_data_t)
+getattr_dirs_pattern(java_t, git_home_t, git_home_t)
 allow java_t staff_t:unix_stream_socket ioctl;

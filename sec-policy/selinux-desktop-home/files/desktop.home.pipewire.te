@@ -89,9 +89,9 @@ allow pipewire_t staff_dbusd_t:unix_stream_socket connectto;
 allow pipewire_t tmpfs_t:file { getattr map read write };
 allow pipewire_t user_runtime_t:file { create lock open read };
 allow pipewire_t user_runtime_t:sock_file { create write };
-allow pipewire_t wireplumber_t:dir search;
-allow pipewire_t wireplumber_t:file read;
-allow pipewire_t wireplumber_t:lnk_file read;
+search_dirs_pattern(pipewire_t, wireplumber_t, wireplumber_t)
+read_files_pattern(pipewire_t, wireplumber_t, wireplumber_t)
+read_lnk_files_pattern(pipewire_t, wireplumber_t, wireplumber_t)
 alsa_read_config(pipewire_t)
 alsa_read_lib(pipewire_t)
 corecmd_exec_bin(pipewire_t)

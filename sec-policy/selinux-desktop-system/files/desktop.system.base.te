@@ -284,13 +284,13 @@ userdom_manage_user_bin(staff_git_t)
 # git mmaps its index, and no interface grants map on user_bin_t specifically
 # (userdom_map_user_home_content_files covers user_home_t only, and the map_all
 # variant would grant map on every home content type). One precise allow.
-allow staff_git_t user_bin_t:file map;
+mmap_read_files_pattern(staff_git_t, user_bin_t, user_bin_t)
 term_use_ptmx(staff_git_t)
 # The overlay itself lives under /var/db/repos, so *reading* it as the session
 # user (editing policy files, inspecting ebuilds) needs this too - without it the
 # policy cannot be maintained as staff_t under enforcing.
 portage_read_ebuild(staff_t)
-allow staff_screen_t portage_ebuild_t:dir search;
+search_dirs_pattern(staff_screen_t, portage_ebuild_t, portage_ebuild_t)
 allow utempter_t sysadm_t:udp_socket { read write };
 
 # --- what enforcement would actually hit in the critical paths ---
@@ -310,14 +310,14 @@ kernel_getattr_proc(staff_sudo_t)
 # even though there are only two denials each in the whole log: sshd reading
 # openrc's script state, and a file under /run.
 init_read_script_status_files(sshd_t)
-allow sshd_t var_run_t:file read;
+read_files_pattern(sshd_t, var_run_t, var_run_t)
 
 # logind watches a cgroup file (fs_watch_cgroup_files is the interface for it).
 fs_watch_cgroup_files(systemd_logind_t)
 
 # dhcpcd-run-hook searches the init runtime directory; refpolicy has no search
 # interface for it (only create/delete/dontaudit), so this is a raw allow.
-allow dhcpc_script_t init_runtime_t:dir search;
+search_dirs_pattern(dhcpc_script_t, init_runtime_t, init_runtime_t)
 term_use_ptmx(utempter_t)
 
 fs_getattr_tmpfs(xauth_t)
@@ -335,21 +335,21 @@ userdom_manage_user_tmp_files(xauth_t)
 term_use_ptmx(ssh_t)
 # ssh inherited a cwd on the tmpfs mount (~/tmp) and searched it. ssh_t is not
 # permissive, so an ssh started from there is denied without this.
-allow ssh_t user_tmpfs_t:dir search;
+search_dirs_pattern(ssh_t, user_tmpfs_t, user_tmpfs_t)
 
 # Running the capture tool and the build through sudo: the obstacle is the repo
 # tree being portage_ebuild_t. staff_sudo_t is what a `sudo ./aud` or
 # `sudo make -C <pkg> merge` becomes, so without this the policy cannot be
 # triaged or maintained under enforcing at all.
 portage_read_ebuild(staff_sudo_t)
-allow staff_sudo_t portage_ebuild_t:dir search;
+search_dirs_pattern(staff_sudo_t, portage_ebuild_t, portage_ebuild_t)
 
 # semodule/semanage asking for its own scheduling class during a merge.
 allow semanage_t self:process getsched;
 
 # --- r16: git in the session's no_new_privs context ---
 # git's remaining denials once staff_git_t came off the permissive list.
-allow staff_git_t user_tmpfs_t:dir search;
+search_dirs_pattern(staff_git_t, user_tmpfs_t, user_tmpfs_t)
 # git talks to a socket the session owns (the agent/wrapper socket)
 allow staff_git_t staff_t:unix_stream_socket { getattr ioctl read write };
 # git's mmap heuristic reads /proc/sys/vm/overcommit_memory
@@ -382,9 +382,9 @@ dontaudit systemd_tmpfiles_t init_t:fd { use };
 # interface for reading the files under it, and a developer greps the kernel
 # tree - so the read is a raw allow.
 files_search_src(staff_t)
-allow staff_t src_t:file { getattr open read };
+read_files_pattern(staff_t, src_t, src_t)
 # querying the installed-package database (qlist/eselect-style tools)
-allow staff_t portage_db_t:file { getattr open read };
+read_files_pattern(staff_t, portage_db_t, portage_db_t)
 
 # --- r18: ss, the socket census ---
 #
@@ -414,7 +414,7 @@ allow ss_t domain:{ rawip_socket packet_socket netlink_audit_socket } getattr;
 # `sudo nft -f <file>` runs as iptables_t, so loading a ruleset straight out of
 # the overlay needs the same repo access staff_sudo_t got.
 portage_read_ebuild(iptables_t)
-allow iptables_t portage_ebuild_t:dir search;
+search_dirs_pattern(iptables_t, portage_ebuild_t, portage_ebuild_t)
 
 # --- r20b: folded in from the hand-written desktop.system.cil ---
 #
@@ -423,33 +423,33 @@ allow iptables_t portage_ebuild_t:dir search;
 # "removed" from desktop.system.base.te in r18 - the .cil still carried a copy.
 # One source of truth is worth more than the convenience of a CIL file, and every
 # rule in it is an ordinary allow, so they live here now and the module goes away.
-allow initrc_t nsfs_t:file getattr;
-allow dhcpc_script_t nscd_runtime_t:dir search;
+getattr_files_pattern(initrc_t, nsfs_t, nsfs_t)
+search_dirs_pattern(dhcpc_script_t, nscd_runtime_t, nscd_runtime_t)
 allow portage_sandbox_t sysadm_t:fd use;
 allow portage_t node_t:tcp_socket node_bind;
 allow portage_t node_t:udp_socket node_bind;
-allow ssh_t portage_tmp_t:file { read getattr map open };
-allow ssh_t ssh_home_t:file { read getattr open };
-allow ssh_t user_home_t:dir search;
-allow staff_dbusd_t user_home_dir_t:dir search;
-allow staff_dbusd_t user_home_t:dir search;
-allow staff_dbusd_t user_runtime_t:dir search;
-allow staff_screen_t portage_tmp_t:file { read getattr map open };
-allow staff_screen_t user_home_dir_t:dir search;
-allow staff_screen_t user_home_t:dir search;
-allow staff_screen_t user_home_t:file { read getattr open };
-allow staff_sudo_t portage_tmp_t:file { read getattr map open };
+mmap_read_files_pattern(ssh_t, portage_tmp_t, portage_tmp_t)
+read_files_pattern(ssh_t, ssh_home_t, ssh_home_t)
+search_dirs_pattern(ssh_t, user_home_t, user_home_t)
+search_dirs_pattern(staff_dbusd_t, user_home_dir_t, user_home_dir_t)
+search_dirs_pattern(staff_dbusd_t, user_home_t, user_home_t)
+search_dirs_pattern(staff_dbusd_t, user_runtime_t, user_runtime_t)
+mmap_read_files_pattern(staff_screen_t, portage_tmp_t, portage_tmp_t)
+search_dirs_pattern(staff_screen_t, user_home_dir_t, user_home_dir_t)
+search_dirs_pattern(staff_screen_t, user_home_t, user_home_t)
+read_files_pattern(staff_screen_t, user_home_t, user_home_t)
+mmap_read_files_pattern(staff_sudo_t, portage_tmp_t, portage_tmp_t)
 allow staff_t dri_device_t:chr_file map;
-allow staff_t portage_tmp_t:file { read map open };
+mmap_read_files_pattern(staff_t, portage_tmp_t, portage_tmp_t)
 allow staff_t security_t:security read_policy;
 allow staff_t self:netlink_generic_socket { read write create getattr bind setopt };
 allow staff_t self:process setexec;
 allow staff_t user_home_dir_t:dir add_name;
 allow staff_t user_home_t:dir { add_name remove_name };
 allow staff_t user_home_t:file { read write open };
-allow sysadm_t auditd_log_t:file { read getattr };
+read_files_pattern(sysadm_t, auditd_log_t, auditd_log_t)
 allow sysadm_t mozilla_t:process getcap;
-allow sysadm_t nsfs_t:file getattr;
+getattr_files_pattern(sysadm_t, nsfs_t, nsfs_t)
 allow sysadm_t rtkit_daemon_t:process getcap;
 allow sysadm_t ssh_t:process getcap;
 allow sysadm_t staff_screen_t:process getcap;
@@ -457,7 +457,7 @@ allow sysadm_t staff_t:fifo_file write;
 allow sysadm_t staff_t:process getcap;
 allow sysadm_t system_dbusd_t:process getcap;
 allow sysadm_t user_t:process getcap;
-allow unconfined_t auditd_log_t:file { read getattr };
+read_files_pattern(unconfined_t, auditd_log_t, auditd_log_t)
 allow unconfined_t auditd_t:process getcap;
 
 # --- r20c: what the corrected full-log sweep found still missing (part 1) ---
@@ -471,13 +471,13 @@ allow unconfined_t auditd_t:process getcap;
 # traffic would stay unlabelled, taking the whole network half with it.
 allow iptables_t unlabeled_t:packet relabelto;
 # the tools also read the repo they are pointed at
-allow iptables_t portage_ebuild_t:file { getattr ioctl open read };
+read_files_pattern(iptables_t, portage_ebuild_t, portage_ebuild_t)
 
 # sshd is the lockout-critical service: it records its state and signals the
 # session's processes. Writing /run state is ordinary daemon behaviour.
 allow sshd_t initrc_state_t:file { create unlink write };
 allow sshd_t initrc_state_t:dir { add_name remove_name };
-allow sshd_t initrc_state_t:lnk_file { getattr read };
+read_lnk_files_pattern(sshd_t, initrc_state_t, initrc_state_t)
 allow sshd_t var_run_t:file { getattr open };
 allow sshd_t staff_t:process signull;
 
@@ -492,15 +492,15 @@ allow nginx_t httpd_cache_t:file { create open read unlink write };
 corecmd_exec_shell(staff_git_t)
 corenet_sendrecv_http_client_packets(staff_git_t)
 allow staff_git_t ssh_t:process2 { nnp_transition nosuid_transition };
-allow staff_git_t shell_exec_t:file { execute open read };
+mmap_exec_files_pattern(staff_git_t, shell_exec_t, shell_exec_t)
 allow staff_git_t self:unix_dgram_socket { create ioctl };
 
 # the session's own admin tools: rc-service executing a script out of xdg_config,
 # reading the portage config, reading the SELinux booleans, smartctl on the disk,
 # dmesg/htop-style proc reads, modinfo, and ss's tcp-diag netlink socket.
-allow staff_t xdg_config_t:file { execute execute_no_trans };
-allow staff_t portage_conf_t:file { open read };
-allow staff_t boolean_t:file { open read };
+exec_files_pattern(staff_t, xdg_config_t, xdg_config_t)
+read_files_pattern(staff_t, portage_conf_t, portage_conf_t)
+read_files_pattern(staff_t, boolean_t, boolean_t)
 # NOT granted: smartctl-style raw disk access (fixed_disk_device_t:blk_file read).
 # refpolicy carries `neverallow storage_typeattr_1 fixed_disk_device_t (blk_file
 # (read))` - a deliberate property, because reading the block device side-steps
@@ -509,13 +509,13 @@ allow staff_t boolean_t:file { open read };
 # mechanism as the shadow_t neverallow that was the model case for this work).
 # Under enforcing, `smartctl` on the raw disk is denied; that is intended, and
 # the supported route would be a storage domain rather than widening staff_t.
-allow staff_t modules_dep_t:file { open read };
-allow staff_t proc_kcore_t:file getattr;
-allow staff_t proc_kmsg_t:file getattr;
-allow staff_t proc_mdstat_t:file getattr;
-allow staff_t mtrr_device_t:file getattr;
-allow staff_t sysctl_irq_t:dir { getattr search };
-allow staff_t auditd_log_t:dir getattr;
+read_files_pattern(staff_t, modules_dep_t, modules_dep_t)
+getattr_files_pattern(staff_t, proc_kcore_t, proc_kcore_t)
+getattr_files_pattern(staff_t, proc_kmsg_t, proc_kmsg_t)
+getattr_files_pattern(staff_t, proc_mdstat_t, proc_mdstat_t)
+getattr_files_pattern(staff_t, mtrr_device_t, mtrr_device_t)
+search_dirs_pattern(staff_t, sysctl_irq_t, sysctl_irq_t)
+getattr_dirs_pattern(staff_t, auditd_log_t, auditd_log_t)
 allow staff_t proc_t:filesystem associate;
 allow staff_t self:netlink_tcpdiag_socket { bind create getattr nlmsg_read read setopt write };
 allow staff_t sysadm_t:process signull;

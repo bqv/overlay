@@ -57,15 +57,15 @@ allow crow_t self:fifo_file { read write };
 allow crow_t self:netlink_route_socket { bind create getattr getopt nlmsg_read read setopt write };
 allow crow_t self:process { getsched setsched signull };
 allow staff_t crow_t:process { getpgid rlimitinh siginh ptrace };
-allow staff_t crow_t:dir search;
+search_dirs_pattern(staff_t, crow_t, crow_t)
 allow staff_t crow_t:file { open getattr map read write };
-allow staff_t crow_t:lnk_file read;
+read_lnk_files_pattern(staff_t, crow_t, crow_t)
 allow crow_t self:shm { create destroy read unix_read unix_write write };
 allow crow_t self:unix_dgram_socket { connect create };
 allow crow_t staff_dbusd_t:unix_stream_socket connectto;
-allow crow_t staff_t:dir search;
-allow crow_t staff_t:file read;
-allow crow_t staff_t:lnk_file { getattr read };
+search_dirs_pattern(crow_t, staff_t, staff_t)
+read_files_pattern(crow_t, staff_t, staff_t)
+read_lnk_files_pattern(crow_t, staff_t, staff_t)
 allow crow_t tmpfs_t:file { create getattr link map open read unlink write };
 allow crow_t user_runtime_t:dir { search open read getattr };
 allow crow_t user_runtime_t:sock_file { read write getattr };
