@@ -43,23 +43,49 @@ gen_require(`
   type udev_t;
   type fsadm_t;
   class filesystem getattr;
-  class process { getcap noatsecure rlimitinh siginh transition };
+  class process { getcap noatsecure rlimitinh setexec siginh transition };
   class fd use;
+  class packet relabelto;
+  class netlink_tcpdiag_socket { bind create getattr nlmsg_read read setopt write };
+  class netlink_kobject_uevent_socket { getattr sendto };
+  class blk_file { ioctl open read };
+  class security read_policy;
+  class filesystem associate;
+  class lnk_file { create getattr read unlink };
   class file { create getattr map open read unlink write relabelfrom relabelto };
   class dir { create getattr open read search relabelfrom relabelto };
   class capability { dac_override dac_read_search net_admin sys_ptrace };
+  type auditd_log_t;
+  type auditd_t;
+  type dri_device_t;
+  type initrc_t;
+  type mozilla_t;
+  type node_t;
+  type nscd_runtime_t;
+  type nsfs_t;
+  type portage_tmp_t;
+  type security_t;
+  type ssh_home_t;
+  type unconfined_t;
+  type user_home_dir_t;
+  type user_home_t;
+  type user_runtime_t;
+  type user_t;
   class cap_userns sys_ptrace;
   class rawip_socket getattr;
   class packet_socket getattr;
   class netlink_audit_socket getattr;
-  class unix_dgram_socket { getattr sendto };
+  class unix_dgram_socket { create getattr ioctl sendto };
   class unix_stream_socket { getattr ioctl read write };
-  class tcp_socket { getattr name_bind };
-  class udp_socket getattr;
+  class chr_file map;
+  class fifo_file write;
+  class security read_policy;
+  class tcp_socket { getattr name_bind node_bind };
+  class udp_socket { getattr node_bind };
   class netlink_route_socket getattr;
   class netlink_kobject_uevent_socket getattr;
   class netlink_selinux_socket getattr;
-  class netlink_generic_socket getattr;
+  class netlink_generic_socket { bind create getattr read setopt write };
   type portage_ebuild_t;
   type staff_screen_t;
   type staff_git_t;
@@ -72,6 +98,25 @@ gen_require(`
   type init_t;
   type systemd_tmpfiles_t;
   type ss_t;
+  type nginx_t;
+  type xdg_config_t;
+  type proc_t;
+  type unlabeled_t;
+  type httpd_cache_t;
+  type fixed_disk_device_t;
+  type portage_conf_t;
+  type boolean_t;
+  type modules_dep_t;
+  type proc_kcore_t;
+  type proc_kmsg_t;
+  type proc_mdstat_t;
+  type sysctl_irq_t;
+  type wireplumber_t;
+  type mtrr_device_t;
+  type usr_t;
+  type bin_t;
+  type git_home_t;
+  type xdg_data_t;
   type iptables_t;
   type portage_db_t;
   type var_run_t;
@@ -370,3 +415,111 @@ allow ss_t domain:{ rawip_socket packet_socket netlink_audit_socket } getattr;
 # the overlay needs the same repo access staff_sudo_t got.
 portage_read_ebuild(iptables_t)
 allow iptables_t portage_ebuild_t:dir search;
+
+# --- r20b: folded in from the hand-written desktop.system.cil ---
+#
+# That file was a second source of the same policy: separate from the .te files,
+# with its own require list, and it is how the dhcpc_t blanket survived being
+# "removed" from desktop.system.base.te in r18 - the .cil still carried a copy.
+# One source of truth is worth more than the convenience of a CIL file, and every
+# rule in it is an ordinary allow, so they live here now and the module goes away.
+allow initrc_t nsfs_t:file getattr;
+allow dhcpc_script_t nscd_runtime_t:dir search;
+allow portage_sandbox_t sysadm_t:fd use;
+allow portage_t node_t:tcp_socket node_bind;
+allow portage_t node_t:udp_socket node_bind;
+allow ssh_t portage_tmp_t:file { read getattr map open };
+allow ssh_t ssh_home_t:file { read getattr open };
+allow ssh_t user_home_t:dir search;
+allow staff_dbusd_t user_home_dir_t:dir search;
+allow staff_dbusd_t user_home_t:dir search;
+allow staff_dbusd_t user_runtime_t:dir search;
+allow staff_screen_t portage_tmp_t:file { read getattr map open };
+allow staff_screen_t user_home_dir_t:dir search;
+allow staff_screen_t user_home_t:dir search;
+allow staff_screen_t user_home_t:file { read getattr open };
+allow staff_sudo_t portage_tmp_t:file { read getattr map open };
+allow staff_t dri_device_t:chr_file map;
+allow staff_t portage_tmp_t:file { read map open };
+allow staff_t security_t:security read_policy;
+allow staff_t self:netlink_generic_socket { read write create getattr bind setopt };
+allow staff_t self:process setexec;
+allow staff_t user_home_dir_t:dir add_name;
+allow staff_t user_home_t:dir { add_name remove_name };
+allow staff_t user_home_t:file { read write open };
+allow sysadm_t auditd_log_t:file { read getattr };
+allow sysadm_t mozilla_t:process getcap;
+allow sysadm_t nsfs_t:file getattr;
+allow sysadm_t rtkit_daemon_t:process getcap;
+allow sysadm_t ssh_t:process getcap;
+allow sysadm_t staff_screen_t:process getcap;
+allow sysadm_t staff_t:fifo_file write;
+allow sysadm_t staff_t:process getcap;
+allow sysadm_t system_dbusd_t:process getcap;
+allow sysadm_t user_t:process getcap;
+allow unconfined_t auditd_log_t:file { read getattr };
+allow unconfined_t auditd_t:process getcap;
+
+# --- r20c: what the corrected full-log sweep found still missing (part 1) ---
+# Every line here answers a specific tuple that the running policy does not allow,
+# from a sweep that checks each permission separately.
+
+# THE critical one. nft assigns a secmark to every packet; the first packet of a
+# flow has no label yet, so the assignment is a relabelto from unlabeled_t. Only
+# packet_type is granted (from the original ruleset), and unlabeled_t is not in
+# that attribute - so under enforcing the labelling itself would be denied and
+# traffic would stay unlabelled, taking the whole network half with it.
+allow iptables_t unlabeled_t:packet relabelto;
+# the tools also read the repo they are pointed at
+allow iptables_t portage_ebuild_t:file { getattr ioctl open read };
+
+# sshd is the lockout-critical service: it records its state and signals the
+# session's processes. Writing /run state is ordinary daemon behaviour.
+allow sshd_t initrc_state_t:file { create unlink write };
+allow sshd_t initrc_state_t:dir { add_name remove_name };
+allow sshd_t initrc_state_t:lnk_file { getattr read };
+allow sshd_t var_run_t:file { getattr open };
+allow sshd_t staff_t:process signull;
+
+# nginx's proxy cache. refpolicy keeps httpd_cache_t for the apache module, so
+# there is no nginx-specific interface for it; the apache cache interfaces exist
+# but grant a different mix, so the perms are written out.
+allow nginx_t httpd_cache_t:dir { add_name remove_name search };
+allow nginx_t httpd_cache_t:file { create open read unlink write };
+
+# git's wrapper (staff_git_t) runs the shell scripts git needs, talks to the
+# session socket, fetches over https and uses its own dgram socket.
+corecmd_exec_shell(staff_git_t)
+corenet_sendrecv_http_client_packets(staff_git_t)
+allow staff_git_t ssh_t:process2 { nnp_transition nosuid_transition };
+allow staff_git_t shell_exec_t:file { execute open read };
+allow staff_git_t self:unix_dgram_socket { create ioctl };
+
+# the session's own admin tools: rc-service executing a script out of xdg_config,
+# reading the portage config, reading the SELinux booleans, smartctl on the disk,
+# dmesg/htop-style proc reads, modinfo, and ss's tcp-diag netlink socket.
+allow staff_t xdg_config_t:file { execute execute_no_trans };
+allow staff_t portage_conf_t:file { open read };
+allow staff_t boolean_t:file { open read };
+# NOT granted: smartctl-style raw disk access (fixed_disk_device_t:blk_file read).
+# refpolicy carries `neverallow storage_typeattr_1 fixed_disk_device_t (blk_file
+# (read))` - a deliberate property, because reading the block device side-steps
+# the filesystem and its permissions. The neverallow check refused the whole
+# module until this line was removed, which is the check doing its job (the same
+# mechanism as the shadow_t neverallow that was the model case for this work).
+# Under enforcing, `smartctl` on the raw disk is denied; that is intended, and
+# the supported route would be a storage domain rather than widening staff_t.
+allow staff_t modules_dep_t:file { open read };
+allow staff_t proc_kcore_t:file getattr;
+allow staff_t proc_kmsg_t:file getattr;
+allow staff_t proc_mdstat_t:file getattr;
+allow staff_t mtrr_device_t:file getattr;
+allow staff_t sysctl_irq_t:dir { getattr search };
+allow staff_t auditd_log_t:dir getattr;
+allow staff_t proc_t:filesystem associate;
+allow staff_t self:netlink_tcpdiag_socket { bind create getattr nlmsg_read read setopt write };
+allow staff_t sysadm_t:process signull;
+
+# the socket census again: two classes it walks that r18/r19 did not name
+allow ss_t wireplumber_t:netlink_kobject_uevent_socket getattr;
+allow ss_t dhcpc_t:udp_socket getattr;

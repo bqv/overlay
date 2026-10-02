@@ -1,5 +1,9 @@
 policy_module(desktop.home.openrc, 1.0)
 
+# r20b: the audit2allow draft lines that used to sit here were removed - the
+# require block below is what remains, and the per-role openrc rules it was
+# drafted for never recurred. Kept as a placeholder, not as live policy.
+
 gen_require(`
   attribute domain;
   type initrc_t;
@@ -70,24 +74,6 @@ gen_require(`
 ')
 
 ##============= staff_t ==============
-#allow staff_t auditd_initrc_exec_t:file getattr; # openrc-user
-#allow staff_t avahi_initrc_exec_t:file getattr; # openrc-user
-#allow staff_t bluetooth_initrc_exec_t:file getattr; # openrc-user
-#allow staff_t cgroup_t:file write; # openrc-user
-#allow staff_t entropyd_initrc_exec_t:file getattr; # openrc-user
-#allow staff_t initrc_state_t:dir { add_name create getattr open read remove_name search }; # openrc-user
-#allow staff_t initrc_state_t:fifo_file { create open read }; # openrc-user
-#allow staff_t initrc_state_t:file { create getattr open read unlink write }; # openrc-user
-#allow staff_t initrc_state_t:lnk_file { create read unlink }; # openrc-user
-#allow staff_t nscd_initrc_exec_t:file getattr; # openrc-user
-#allow staff_t ntpd_initrc_exec_t:file getattr; # openrc-user
-#allow staff_t self:capability { audit_write dac_override dac_read_search net_admin setuid }; # openrc-user
-#allow staff_t self:process setexec; # openrc-user
-#allow staff_t sysadm_t:key create; # openrc-user
-#allow staff_t sysadm_t:process { transition }; # openrc-user
-#allow staff_t tor_initrc_exec_t:file getattr; # openrc-user
-#allow staff_t udev_t:dir { getattr search }; # openrc-user
-#allow staff_t var_run_t:file { create getattr open write }; # openrc-user
 #auth_rw_lastlog(staff_t) # openrc-user
 #auth_tunable_read_shadow(staff_t) # openrc-user
 #auth_write_login_records(staff_t) # openrc-user
