@@ -2,7 +2,7 @@
 
 Hand-written, application-scoped MCS policy for a `staff_u` desktop, layered on
 refpolicy 2.20250213 through the `selinux-policy-2` eclass. Built as real
-packages in the `local` overlay, not as hand-installed `.pp` files.
+packages in the `bqv` overlay, not as hand-installed `.pp` files.
 
 ## Target: enforcing
 
