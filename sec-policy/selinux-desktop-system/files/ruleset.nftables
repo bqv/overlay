@@ -172,6 +172,12 @@ table inet filter {
 		#    was - unmapped off-box traffic is left unlabeled on purpose.
 		ct state established,related ct direction original meta iifname != "lo" meta secmark set tcp dport map @secmapping_in
 		ct state established,related ct direction original meta iifname != "lo" meta secmark set udp dport map @secmapping_in
+		# 4c. and the mirror of that: a packet whose *source* port is one the
+		#     outbound map named is a reply to something this box opened, whatever
+		#     state conntrack holds for the flow. Keying on the source port means
+		#     the label does not depend on a conntrack entry surviving.
+		meta iifname != "lo" meta secmark set tcp sport map @secmapping_out
+		meta iifname != "lo" meta secmark set udp sport map @secmapping_out
 
 		# 5. remember it: new flows in full, repaired flows written back
 		ct state new ct secmark set meta secmark
@@ -206,6 +212,16 @@ table inet filter {
 
 		ct state established,related ct direction original meta oifname != "lo" meta secmark set tcp dport map @secmapping_out
 		ct state established,related ct direction original meta oifname != "lo" meta secmark set udp dport map @secmapping_out
+		# 4c. the half that was actually missing. Anything leaving from one of
+		#     *our* server ports is recognisable by its source port, and the
+		#     inbound map names that port - so nginx's replies come out as
+		#     http_server_packet_t instead of unclassified. They had been leaving
+		#     unlabeled, then (after the invalid-state rules) as
+		#     dynamic_packet_t, which nginx_t cannot send either: the connection
+		#     opened and then hung, which is what "SELinux is blocking the LAN"
+		#     actually was.
+		meta oifname != "lo" meta secmark set tcp sport map @secmapping_in
+		meta oifname != "lo" meta secmark set udp sport map @secmapping_in
 
 		ct state new ct secmark set meta secmark
 		ct state established,related ct direction original meta oifname != "lo" ct secmark set meta secmark
