@@ -35,4 +35,6 @@ RDEPEND="${DEPEND}
 
 pkg_postinst() {
 	selinux-policy-2_pkg_postinst
+	# the pass keychain needs gpg to write generic home content - see booleans.local
+	setsebool -P gpg_manage_generic_user_content on
 }
