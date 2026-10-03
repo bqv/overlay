@@ -6,13 +6,15 @@ gen_require(`
   type dhcpc_t;
   type iptables_t;
   type portage_ebuild_t;
+  type run_init_t;
   type ss_t;
   type unconfined_t;
   type wireplumber_t;
   attribute domain;
   class cap_userns sys_ptrace;
-  class capability { dac_override dac_read_search net_admin sys_admin sys_ptrace sys_tty_config };
+  class capability { chown dac_override dac_read_search net_admin sys_admin sys_ptrace sys_tty_config };
   class netlink_kobject_uevent_socket { getattr sendto };
+  class netlink_route_socket { bind create getopt nlmsg_read read setopt write };
   class process { getcap noatsecure rlimitinh setexec siginh transition };
   class udp_socket { getattr node_bind };
 ')
@@ -49,3 +51,23 @@ read_files_pattern(unconfined_t, auditd_log_t, auditd_log_t)
 allow unconfined_t auditd_t:process getcap;
 # the tools also read the repo they are pointed at
 read_files_pattern(iptables_t, portage_ebuild_t, portage_ebuild_t)
+
+# `sudo ss -apn` - all sockets, not just -tulpn - opens a NETLINK_ROUTE socket to
+# enumerate. ss_t held only getattr on that class, so it died with "Cannot open netlink
+# socket: Permission denied" and printed nothing at all; ss -tulpn was unaffected
+# because it never opens one. refpolicy ships no interface for it (the only one that
+# mentions the class is systemd_rw_networkd_netlink_route_sockets, for networkd), so
+# this is the read half of staff_t's own grant - plain `ss` worked because as staff_r it
+# stays in staff_t.
+allow ss_t self:netlink_route_socket { bind create getopt nlmsg_read read setopt write };
+
+# run_init starts an init script in its proper domain and chowns the state it hands
+# over; the capability class has no interface for this.
+allow run_init_t self:capability chown;
+
+# ss -a asks the kernel to autoload the MPTCP diag module (net-pf-16-proto-4-type-44)
+# to enumerate mptcp sockets; the autoload is refused and it carries on - the census
+# is complete without it (82 tcp, 232 u_str, and 3 mptcp entries in one run). Nothing
+# fails, so this is dontaudited rather than granted: loading a module is not something
+# a socket census should be able to ask for.
+kernel_dontaudit_request_load_module(ss_t)

@@ -39,7 +39,11 @@ dontaudit sysadm_t portage_t:process { noatsecure rlimitinh siginh };
 dontaudit sysadm_t semanage_t:process { noatsecure rlimitinh siginh };
 dontaudit sysadm_t setfiles_t:process { noatsecure rlimitinh siginh };
 allow sysadm_t unlabeled_t:process getattr;
+# `sudo nginx -t` binds the listening sockets to validate them, and under sudo nginx
+# runs in sysadm_t (there is no sysadm_t -> nginx_t transition), so the config test was
+# denied name_bind on http_port_t.
 corenet_tcp_bind_generic_node(sysadm_t)
+corenet_tcp_bind_http_port(sysadm_t)
 kernel_read_unlabeled_files(sysadm_t) # htop / proc
 kernel_manage_unlabeled_symlinks(sysadm_t) # htop / proc
 

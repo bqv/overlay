@@ -64,8 +64,10 @@ allow domain staff_t:fifo_file rw_inherited_fifo_file_perms;
 # developer greps the tree.
 files_search_src(staff_t)
 read_files_pattern(staff_t, src_t, src_t)
-# querying the installed-package database (qlist/eselect-style tools)
-read_files_pattern(staff_t, portage_db_t, portage_db_t)
+# Querying the installed database as the user (qlist/qcheck/equery/eselect): the file
+# read was here, but not `read` on the vdb *directories*, so listing the tree failed
+# with "could not open tree: var/db/pkg". portage_read_db is the complete version.
+portage_read_db(staff_t)
 
 allow staff_t dri_device_t:chr_file map;
 mmap_read_files_pattern(staff_t, portage_tmp_t, portage_tmp_t)
@@ -78,7 +80,10 @@ allow staff_t user_home_t:file { read write open };
 # the session's own admin tools: rc-service out of xdg_config, portage config, SELinux
 # booleans, smartctl, dmesg/htop proc reads, modinfo and ss's tcp-diag socket.
 exec_files_pattern(staff_t, xdg_config_t, xdg_config_t)
-read_files_pattern(staff_t, portage_conf_t, portage_conf_t)
+# ... and the config, including the /etc/portage/make.profile symlink the q tools
+# follow: read_files_pattern covered the files but not the link, and qcheck/equery died
+# on it. portage_read_config is the complete version.
+portage_read_config(staff_t)
 read_files_pattern(staff_t, boolean_t, boolean_t)
 # NOT granted: smartctl-style raw disk access (fixed_disk_device_t:blk_file read).
 # refpolicy carries `neverallow storage_typeattr_1 fixed_disk_device_t (blk_file (read))`
