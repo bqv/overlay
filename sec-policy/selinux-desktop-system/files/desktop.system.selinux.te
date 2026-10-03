@@ -23,7 +23,7 @@ gen_require(`
 # the can_change_object_identity attribute - not a grant but the only way to satisfy a
 # constraint that sits above the allow rules.
 #
-# Method and evidence: ../../TRIAGE.md.
+# Method and evidence: the local TRIAGE ledger, which is kept out of this repository.
 
 allow semanage_t cgroup_t:filesystem getattr;
 allow semanage_t file_context_t:file { relabelfrom relabelto };
@@ -56,7 +56,7 @@ allow semanage_t tracefs_t:filesystem getattr;
 # Those allows still left every relabelto denied - the block is a constraint, not a missing
 # allow: store files are system_u and this runs as staff_u, so eq u1 u2 fails, and
 # can_change_object_identity held only kernel_t. Attribute membership is the only way to
-# satisfy a constraint above the allow rules; no neverallow guards it. See TRIAGE.md.
+# satisfy a constraint above the allow rules; no neverallow guards it. See the local TRIAGE ledger (not in this repository).
 typeattribute semanage_t can_change_object_identity;
 
 # semodule/semanage asking for its own scheduling class during a merge.

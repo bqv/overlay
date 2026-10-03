@@ -28,7 +28,7 @@ gen_require(`
 
 # sysinit and boot: udev, tmpfiles, kmod, fsadm, mount, hwclock, dmesg, shutdown.
 #
-# Method and evidence: ../../TRIAGE.md. Two method notes live there: auditd starts in the
+# Method and evidence: the local TRIAGE ledger, which is kept out of this repository. Two method notes live there: auditd starts in the
 # 'default' runlevel, so sysinit denials never reach /var/log/audit and are only in the
 # kernel ring (`ausearch -ts boot` does not show them).
 

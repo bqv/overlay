@@ -55,7 +55,7 @@ gen_require(`
 # narrower than staff_t and needs its own grants; what the session machinery needs as
 # staff_t is in desktop.system.session.
 #
-# Method and evidence: ../../TRIAGE.md.
+# Method and evidence: the local TRIAGE ledger, which is kept out of this repository.
 
 allow domain staff_t:fifo_file rw_inherited_fifo_file_perms;
 
@@ -83,7 +83,7 @@ read_files_pattern(staff_t, boolean_t, boolean_t)
 # NOT granted: smartctl-style raw disk access (fixed_disk_device_t:blk_file read).
 # refpolicy carries `neverallow storage_typeattr_1 fixed_disk_device_t (blk_file (read))`
 # - a deliberate property, because reading the block device side-steps the filesystem and
-# its permissions. Denied on purpose; the supported route is a storage domain. See TRIAGE.md.
+# its permissions. Denied on purpose; the supported route is a storage domain. See the local TRIAGE ledger (not in this repository).
 read_files_pattern(staff_t, modules_dep_t, modules_dep_t)
 getattr_files_pattern(staff_t, proc_kcore_t, proc_kcore_t)
 getattr_files_pattern(staff_t, proc_kmsg_t, proc_kmsg_t)
@@ -102,7 +102,7 @@ dontaudit staff_dbusd_t staff_t:process { noatsecure rlimitinh siginh };
 # git wrapper reads and searches it, and a tmux session with a cwd there searches it.
 portage_read_ebuild(staff_git_t)
 # staff_git_t is refpolicy's per-role git domain, but it gets nothing for the user's ~/bin:
-# a read-only `git status` in ~/bin/<repo> left ~40 denials. See TRIAGE.md.
+# a read-only `git status` in ~/bin/<repo> left ~40 denials. See the local TRIAGE ledger (not in this repository).
 userdom_manage_user_bin(staff_git_t)
 # git mmaps its index, and no interface grants map on user_bin_t specifically (the map_all
 # variant would cover every home content type). One precise allow.

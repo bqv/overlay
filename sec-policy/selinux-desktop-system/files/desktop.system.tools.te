@@ -20,7 +20,7 @@ gen_require(`
 # The admin tools a session runs: ss (the socket census), nft, the audit log.
 #
 # `ss -tulpn` walks /proc to map sockets to processes. Where refpolicy has an interface
-# it is used; the socket getattrs have none and are raw allows (read-only metadata). See TRIAGE.md.
+# it is used; the socket getattrs have none and are raw allows (read-only metadata). See the local TRIAGE ledger (not in this repository).
 
 # --- r18: ss, the socket census ---
 # `ss -tulpn`'s /proc walk (17k denials, the largest AVC source) plus raw socket getattrs, which have no interface.

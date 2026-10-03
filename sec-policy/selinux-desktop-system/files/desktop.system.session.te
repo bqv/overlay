@@ -47,7 +47,7 @@ gen_require(`
 # runlevel engine - plus the login's session services (logind, the buses, PolicyKit, X
 # authority, utempter, rtkit) and chkpwd, the PAM helper.
 #
-# Method and evidence: ../../TRIAGE.md.
+# Method and evidence: the local TRIAGE ledger, which is kept out of this repository.
 
 # sesh: the session helper talks to the user's session sockets.
 allow sysadm_t staff_t:unix_stream_socket { read write };
@@ -91,7 +91,7 @@ allow staff_t device_t:dir add_name;
 # r21b granted `read` on the modprobe sysctl; the session opens it as well
 allow staff_t sysctl_modprobe_t:file open;
 # nginx's run directory is NOT granted here on purpose: the fault was that /run/nginx
-# carried no label of its own, fixed by one file-context line (nginx_runtime_t). See TRIAGE.md.
+# carried no label of its own, fixed by one file-context line (nginx_runtime_t). See the local TRIAGE ledger (not in this repository).
 # udev opens the seat file it already reads
 allow udev_t systemd_sessions_runtime_t:file { getattr open read };
 

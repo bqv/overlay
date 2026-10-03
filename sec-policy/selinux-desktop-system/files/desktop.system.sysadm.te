@@ -26,7 +26,7 @@ gen_require(`
 # The admin user's session: sysadm_t, and the screen domain derived from it.
 #
 # The sysadmin's own grants; a rule found while triaging a service is noted on the rule.
-# Method and evidence: ../../TRIAGE.md.
+# Method and evidence: the local TRIAGE ledger, which is kept out of this repository.
 
 files_search_default(sysadm_screen_t)
 

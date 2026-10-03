@@ -19,7 +19,7 @@ gen_require(`
 # than being portage - the admin running `make -C <pkg> compile/merge` and the sudo wrapper
 # that runs the capture tool. Maintaining the policy store is desktop.system.selinux.
 #
-# Method and evidence: ../../TRIAGE.md.
+# Method and evidence: the local TRIAGE ledger, which is kept out of this repository.
 
 files_getattr_default_dirs(portage_fetch_t)
 corenet_sendrecv_http_client_packets(portage_t) # binhosts

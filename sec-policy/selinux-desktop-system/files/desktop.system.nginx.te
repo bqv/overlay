@@ -7,7 +7,7 @@ gen_require(`
   class file { create getattr map open read relabelfrom relabelto unlink write };
 ')
 
-# nginx serving :80 and proxying to the local gate on :8080. Method and evidence: ../../TRIAGE.md.
+# nginx serving :80 and proxying to the local gate on :8080. Method and evidence: the local TRIAGE ledger, which is kept out of this repository.
 
 # nginx's proxy cache: httpd_cache_t is apache's and its interfaces grant a different mix.
 allow nginx_t httpd_cache_t:dir { add_name remove_name search };

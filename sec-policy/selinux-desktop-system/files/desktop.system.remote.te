@@ -24,7 +24,7 @@ gen_require(`
 # sshd is the lockout-critical service, so its rules are one place: /run/openrc state,
 # the pty and shadow accesses, and the signal it sends into the session.
 #
-# Method and evidence: ../../TRIAGE.md.
+# Method and evidence: the local TRIAGE ledger, which is kept out of this repository.
 
 # r21b: ssh reads xdg_config.
 allow ssh_t xdg_config_t:dir search;
@@ -42,7 +42,7 @@ kernel_getattr_proc(sshd_t)
 libs_exec_lib_files(sshd_t)
 
 # sshd is how this box is reached remotely, so these two are lockout-relevant even though
-# there are only two denials each in the whole log. See TRIAGE.md.
+# there are only two denials each in the whole log. See the local TRIAGE ledger (not in this repository).
 init_read_script_status_files(sshd_t)
 read_files_pattern(sshd_t, var_run_t, var_run_t)
 
