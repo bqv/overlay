@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>stem@localhost</email>
+		<name>local</name>
+	</maintainer>
+	<longdescription>
+		Proton Mail Bridge provides a local IMAP and SMTP server that relays mail
+		to and from Proton Mail accounts for standard mail clients.
+
+		This package builds the GUI-less CLI binary from the upstream release
+		tarball and links it against the system dev-libs/libfido2 (libcbor). A
+		single local patch forces the keychain helper to use "pass" only and
+		never probe the D-Bus secret-service helpers, which block forever on a
+		host without a session bus.
+	</longdescription>
+	<upstream>
+		<remote-id type="github">ProtonMail/proton-bridge</remote-id>
+	</upstream>
+</pkgmetadata>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>stem@localhost</email>
+		<name>local</name>
+	</maintainer>
+	<longdescription>
+		SimpleX Chat is a private messenger that has no user identifiers of any
+		kind.  This is a -bin package of its CLI: upstream's own .deb (the
+		ubuntu-22_04 build, the same one install.sh fetches) is unpacked and its
+		79 MB Haskell binary installed as /usr/bin/simplex-chat, so its
+		libcrypto/libgmp linkage is owned and preserved by Portage instead of
+		rotting in ~/bin the way the old hand-dropped copy could.
+
+		The CLI doubles as a bot-API server: it is normally started by hand,
+		for example `simplex-chat -p 5225 -d ~/.simplex/simplex_v1`, and local
+		clients (such as the simplex-xmpp-bridge workspace project) talk to it
+		over ws://127.0.0.1:5225.  The API is unauthenticated and unencrypted
+		by design, so that port must never be exposed.
+
+		Upstream advertises a curl-based self-update in `--version` output;
+		this package supersedes it (bump PV, refresh the Manifest, emerge).
+	</longdescription>
+	<upstream>
+		<remote-id type="github">simplex-chat/simplex-chat</remote-id>
+	</upstream>
+</pkgmetadata>

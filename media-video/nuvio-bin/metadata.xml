@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>stem@localhost</email>
+		<name>local</name>
+	</maintainer>
+	<longdescription>
+		Nuvio Desktop is a Compose-Multiplatform media player: it browses
+		Nuvio addons and plays through libmpv.
+
+		This is a -bin package.  Upstream builds a jpackage tree (bundled JRE
+		under /opt/nuvio/lib/runtime) and publishes it as .deb/.rpm/.AppImage/
+		.flatpak; the release .deb is unpacked and the tree installed verbatim
+		under /opt, with upstream's own .desktop file and a /usr/bin/nuvio
+		symlink added.
+
+		Upstream's in-app updater cannot install anything here, by design: on
+		Linux it only offers self-installation when it detects an AppImage
+		(APPIMAGE env), a Flatpak sandbox, or a dpkg/rpm-owned launcher, and
+		it has no sudo/pkexec path.  A Portage install is UNKNOWN to it, so
+		updates come from this ebuild: bump PV, refresh the Manifest, emerge.
+	</longdescription>
+	<upstream>
+		<remote-id type="github">NuvioMedia/NuvioDesktop</remote-id>
+	</upstream>
+</pkgmetadata>

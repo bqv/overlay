@@ -1,0 +1,86 @@
+diff -Nur b/pkg/keychain/helper_dbus_linux.go a/pkg/keychain/helper_dbus_linux.go
+--- a/pkg/keychain/helper_dbus_linux.go	2026-10-03 20:14:44.607415852 +0300
++++ b/pkg/keychain/helper_dbus_linux.go	2026-09-25 11:36:27.000000000 +0300
+@@ -15,10 +15,6 @@
+ // You should have received a copy of the GNU General Public License
+ // along with Proton Mail Bridge.  If not, see <https://www.gnu.org/licenses/>.
+ 
+-//go:build !passdbus
+-
+-// USE="-dbus" builds with -tags=passdbus, which drops this helper.
+-
+ package keychain
+ 
+ import (
+diff -Nur b/pkg/keychain/helper_linux.go a/pkg/keychain/helper_linux.go
+--- a/pkg/keychain/helper_linux.go	2026-10-03 20:14:44.607415852 +0300
++++ b/pkg/keychain/helper_linux.go	2026-09-25 11:36:27.000000000 +0300
+@@ -15,11 +15,6 @@
+ // You should have received a copy of the GNU General Public License
+ // along with Proton Mail Bridge. If not, see <https://www.gnu.org/licenses/>.
+ 
+-//go:build !passdbus
+-
+-// Upstream body.  Built unless -tags=passdbus is given (USE="-dbus"), in
+-// which case helper_linux_passdbus.go replaces this file.
+-
+ package keychain
+ 
+ import (
+diff -Nur b/pkg/keychain/helper_linux_passdbus.go a/pkg/keychain/helper_linux_passdbus.go
+--- a/pkg/keychain/helper_linux_passdbus.go	2026-10-03 20:14:44.607415852 +0300
++++ b/pkg/keychain/helper_linux_passdbus.go	1970-01-01 02:00:00.000000000 +0200
+@@ -1,53 +0,0 @@
+-// Copyright (c) 2026 Proton AG
+-//
+-// This file is part of Proton Mail Bridge.
+-//
+-// Proton Mail Bridge is free software: you can redistribute it and/or modify
+-// it under the terms of the GNU General Public License as published by
+-// the Free Software Foundation, either version 3 of the License, or
+-// (at your option) any later version.
+-//
+-// Proton Mail Bridge is distributed in the hope that it will be useful,
+-// but WITHOUT ANY WARRANTY; without even the implied warranty of
+-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-// GNU General Public License for more details.
+-//
+-// You should have received a copy of the GNU General Public License
+-// along with Proton Mail Bridge. If not, see <https://www.gnu.org/licenses/>.
+-
+-//go:build passdbus
+-
+-// This file is the gentoo USE="-dbus" variant (the default).  It is compiled
+-// with -tags=passdbus, which excludes helper_linux.go and helper_dbus_linux.go.
+-// Upstream probes secret-service-dbus first; on a host with no session D-Bus,
+-// libsecret/godbus try to autolaunch a bus and block, so bridge hangs right
+-// after "Creating keychain list" and never reaches pass.  With this variant pass
+-// is the only helper offered, and it is the default.
+-
+-package keychain
+-
+-import (
+-	"github.com/docker/docker-credential-helpers/credentials"
+-	"github.com/docker/docker-credential-helpers/pass"
+-	"github.com/sirupsen/logrus"
+-	"golang.org/x/sys/execabs"
+-)
+-
+-const Pass = "pass-app"
+-
+-func listHelpers() (Helpers, string) {
+-	helpers := make(Helpers)
+-
+-	if _, err := execabs.LookPath("pass"); err == nil && isUsable(newPassHelper("")) {
+-		helpers[Pass] = newPassHelper
+-		logrus.WithField("keychain", "Pass").Info("Keychain is usable.")
+-	} else {
+-		logrus.WithField("keychain", "Pass").Debug("Keychain is not available.")
+-	}
+-
+-	return helpers, Pass
+-}
+-
+-func newPassHelper(string) (credentials.Helper, error) {
+-	return &pass.Pass{}, nil
+-}
