@@ -4,11 +4,23 @@
 EAPI="7"
 
 IUSE=""
-MODS="desktop.system.base desktop.system.mosh desktop.system.users
+MODS="desktop.system.staff desktop.system.sysadm desktop.system.session
+	desktop.system.nginx desktop.system.remote desktop.system.portage
+	desktop.system.selinux desktop.system.tools desktop.system.boot
+	desktop.system.greet desktop.system.mosh desktop.system.users
 	desktop.system.network"
 BASEPOL="2.20250213-r1"
 POLICY_FILES="
-	desktop.system.base.if desktop.system.base.te desktop.system.base.fc
+	desktop.system.staff.te
+	desktop.system.sysadm.te
+	desktop.system.session.te
+	desktop.system.nginx.te
+	desktop.system.remote.te
+	desktop.system.portage.te
+	desktop.system.selinux.te
+	desktop.system.tools.te
+	desktop.system.boot.te
+	desktop.system.greet.te desktop.system.greet.fc
 	desktop.system.mosh.if desktop.system.mosh.te desktop.system.mosh.fc
 	desktop.system.users.cil
 	desktop.system.network.fc desktop.system.network.te

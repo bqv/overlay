@@ -1,0 +1,72 @@
+policy_module(desktop.system.remote, 1.0)
+
+gen_require(`
+  type chkpwd_t;
+  type initrc_state_t;
+  type portage_tmp_t;
+  type ssh_home_t;
+  type ssh_t;
+  type sshd_t;
+  type staff_t;
+  type sysadm_t;
+  type user_home_t;
+  type user_tmpfs_t;
+  type var_run_t;
+  type xdg_config_t;
+  class capability { dac_override dac_read_search net_admin sys_admin sys_ptrace sys_tty_config };
+  class dir { create getattr open read relabelfrom relabelto search };
+  class file { create getattr map open read relabelfrom relabelto unlink write };
+  class process { getcap noatsecure rlimitinh setexec siginh transition };
+')
+
+# Remote access to this box: sshd, and the ssh client.
+#
+# sshd is the lockout-critical service, so its rules are here in one place rather
+# than spread through a journal: what it may do to /run/openrc state, the pty and
+# shadow accesses it needs, and the signal it sends into the session.
+
+
+# r21b: ssh reads xdg_config.
+allow ssh_t xdg_config_t:dir search;
+dontaudit sshd_t chkpwd_t:process { noatsecure rlimitinh siginh };
+allow sshd_t initrc_state_t:dir read;
+#!!!! This avc can be allowed using the boolean 'allow_polyinstantiation'
+allow sshd_t self:capability dac_override;
+allow sshd_t self:capability net_admin;
+allow sshd_t self:process getcap;
+dontaudit sshd_t staff_t:process { noatsecure rlimitinh siginh };
+dontaudit sshd_t sysadm_t:process { noatsecure rlimitinh siginh };
+auth_tunable_read_shadow(sshd_t)
+#corenet_sendrecv_unlabeled_packets(staff_t) # mosh - udp port 60001
+kernel_getattr_proc(sshd_t)
+libs_exec_lib_files(sshd_t)
+
+# sshd is how this box is reached remotely, so these two are lockout-relevant
+# even though there are only two denials each in the whole log: sshd reading
+# openrc's script state, and a file under /run.
+init_read_script_status_files(sshd_t)
+read_files_pattern(sshd_t, var_run_t, var_run_t)
+
+# --- r15: coverage sweep - what is left in the enforcing domains ---
+#
+# A two-hour capture filtered to the *enforcing* domains only (the seven
+# permissive domains and my own census tooling excluded as self-inflicted)
+# leaves just these. Everything else the box produced was already handled.
+# ssh allocates a pty for the session. sshd's side was already granted; this is
+# the client, and ssh is how the box is reached remotely - so it matters even
+# at four denials.
+term_use_ptmx(ssh_t)
+# ssh inherited a cwd on the tmpfs mount (~/tmp) and searched it. ssh_t is not
+# permissive, so an ssh started from there is denied without this.
+search_dirs_pattern(ssh_t, user_tmpfs_t, user_tmpfs_t)
+
+mmap_read_files_pattern(ssh_t, portage_tmp_t, portage_tmp_t)
+read_files_pattern(ssh_t, ssh_home_t, ssh_home_t)
+search_dirs_pattern(ssh_t, user_home_t, user_home_t)
+# sshd is the lockout-critical service: it records its state and signals the
+# session's processes. Writing /run state is ordinary daemon behaviour.
+allow sshd_t initrc_state_t:file { create unlink write };
+allow sshd_t initrc_state_t:dir { add_name remove_name };
+read_lnk_files_pattern(sshd_t, initrc_state_t, initrc_state_t)
+allow sshd_t var_run_t:file { getattr open };
+allow sshd_t staff_t:process signull;

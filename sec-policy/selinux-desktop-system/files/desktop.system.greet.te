@@ -1,0 +1,10 @@
+policy_module(desktop.system.greet, 1.0)
+
+# The login greeters' entry points.
+#
+# agreety and tuigreet are how greetd is reached, so they carry xdm_exec_t and
+# greetd transitions on them. The contexts are in desktop.system.greet.fc; this
+# module has no rules, and exists so that every module names exactly one
+# consumer instead of one module holding the greeters plus every system rule.
+#
+# Formerly desktop.system.base, which was split by consumer on 2026-10-03.

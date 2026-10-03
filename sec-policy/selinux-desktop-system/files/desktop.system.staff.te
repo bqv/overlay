@@ -1,0 +1,184 @@
+policy_module(desktop.system.staff, 1.0)
+
+gen_require(`
+  type auditd_log_t;
+  type boolean_t;
+  type chkpwd_t;
+  type device_t;
+  type dri_device_t;
+  type modules_dep_t;
+  type mtrr_device_t;
+  type portage_conf_t;
+  type portage_db_t;
+  type portage_ebuild_t;
+  type portage_tmp_t;
+  type proc_kcore_t;
+  type proc_kmsg_t;
+  type proc_mdstat_t;
+  type proc_t;
+  type security_t;
+  type shell_exec_t;
+  type ssh_t;
+  type staff_dbusd_t;
+  type staff_git_t;
+  type staff_screen_t;
+  type staff_sudo_t;
+  type staff_t;
+  type sysadm_t;
+  type sysctl_irq_t;
+  type sysctl_modprobe_t;
+  type user_bin_t;
+  type user_home_dir_t;
+  type user_home_t;
+  type user_runtime_t;
+  type user_tmpfs_t;
+  type utempter_t;
+  type xdg_config_t;
+  attribute domain;
+  class chr_file map;
+  class dir { create getattr open read relabelfrom relabelto search };
+  class fifo_file { getattr ioctl open read unlink write };
+  class file { create getattr map open read relabelfrom relabelto unlink write };
+  class filesystem { associate getattr };
+  class netlink_generic_socket { bind create getattr read setopt write };
+  class netlink_tcpdiag_socket { bind create getattr nlmsg_read read setopt write };
+  class process { getcap noatsecure rlimitinh setexec siginh transition };
+  class security read_policy;
+  class udp_socket { getattr node_bind };
+  class unix_dgram_socket { create getattr ioctl sendto };
+  class unix_stream_socket { getattr ioctl read write };
+')
+
+# The session user, and the per-role domains refpolicy derives from it.
+#
+# What staff_t may do directly - reading source and the package database, running
+# its own tooling, watching /run/user - and then staff_git_t, staff_sudo_t,
+# staff_screen_t and staff_dbusd_t, each narrower than staff_t and each needing
+# its own grants. What the *session machinery* needs as staff_t is not here; it
+# is in desktop.system.session.
+#
+# Method and evidence for every rule: ../../TRIAGE.md.
+
+
+allow domain staff_t:fifo_file rw_inherited_fifo_file_perms;
+
+# --- r16c: staff_t reading what a user legitimately reads ---
+# /usr/src is src_t. refpolicy has files_search_src() for the directory but no
+# interface for reading the files under it, and a developer greps the kernel
+# tree - so the read is a raw allow.
+files_search_src(staff_t)
+read_files_pattern(staff_t, src_t, src_t)
+# querying the installed-package database (qlist/eselect-style tools)
+read_files_pattern(staff_t, portage_db_t, portage_db_t)
+
+allow staff_t dri_device_t:chr_file map;
+mmap_read_files_pattern(staff_t, portage_tmp_t, portage_tmp_t)
+allow staff_t security_t:security read_policy;
+allow staff_t self:netlink_generic_socket { read write create getattr bind setopt };
+allow staff_t self:process setexec;
+allow staff_t user_home_dir_t:dir add_name;
+allow staff_t user_home_t:dir { add_name remove_name };
+allow staff_t user_home_t:file { read write open };
+# the session's own admin tools: rc-service executing a script out of xdg_config,
+# reading the portage config, reading the SELinux booleans, smartctl on the disk,
+# dmesg/htop-style proc reads, modinfo, and ss's tcp-diag netlink socket.
+exec_files_pattern(staff_t, xdg_config_t, xdg_config_t)
+read_files_pattern(staff_t, portage_conf_t, portage_conf_t)
+read_files_pattern(staff_t, boolean_t, boolean_t)
+# NOT granted: smartctl-style raw disk access (fixed_disk_device_t:blk_file read).
+# refpolicy carries `neverallow storage_typeattr_1 fixed_disk_device_t (blk_file
+# (read))` - a deliberate property, because reading the block device side-steps
+# the filesystem and its permissions. The neverallow check refused the whole
+# module until this line was removed, which is the check doing its job (the same
+# mechanism as the shadow_t neverallow that was the model case for this work).
+# Under enforcing, `smartctl` on the raw disk is denied; that is intended, and
+# the supported route would be a storage domain rather than widening staff_t.
+read_files_pattern(staff_t, modules_dep_t, modules_dep_t)
+getattr_files_pattern(staff_t, proc_kcore_t, proc_kcore_t)
+getattr_files_pattern(staff_t, proc_kmsg_t, proc_kmsg_t)
+getattr_files_pattern(staff_t, proc_mdstat_t, proc_mdstat_t)
+getattr_files_pattern(staff_t, mtrr_device_t, mtrr_device_t)
+search_dirs_pattern(staff_t, sysctl_irq_t, sysctl_irq_t)
+getattr_dirs_pattern(staff_t, auditd_log_t, auditd_log_t)
+allow staff_t proc_t:filesystem associate;
+allow staff_t self:netlink_tcpdiag_socket { bind create getattr nlmsg_read read setopt write };
+allow staff_t sysadm_t:process signull;
+
+allow staff_dbusd_t self:process getcap;
+dontaudit staff_dbusd_t staff_t:process { noatsecure rlimitinh siginh };
+
+# The overlay lives under /var/db/repos, whose tree is labelled
+# portage_ebuild_t, so ordinary user tooling that works in it needs traversal:
+# the user's git wrapper reads and searches it, and a tmux session with a cwd
+# there searches it. refpolicy only expects portage tools in that tree.
+portage_read_ebuild(staff_git_t)
+# staff_git_t is refpolicy's per-role git domain (declared inside an optional
+# block in the staff module). It gets git's own access - git_exec_t, git_home_t -
+# but nothing for the user's ~/bin, so git cannot work in a repo there, and
+# staff_git_t is still in the permissive list. Reproduced with a read-only
+# `git status` in ~/bin/<repo>: ~40 denials against user_bin_t plus /dev/ptmx.
+userdom_manage_user_bin(staff_git_t)
+# git mmaps its index, and no interface grants map on user_bin_t specifically
+# (userdom_map_user_home_content_files covers user_home_t only, and the map_all
+# variant would grant map on every home content type). One precise allow.
+mmap_read_files_pattern(staff_git_t, user_bin_t, user_bin_t)
+term_use_ptmx(staff_git_t)
+# The overlay itself lives under /var/db/repos, so *reading* it as the session
+# user (editing policy files, inspecting ebuilds) needs this too - without it the
+# policy cannot be maintained as staff_t under enforcing.
+portage_read_ebuild(staff_t)
+search_dirs_pattern(staff_screen_t, portage_ebuild_t, portage_ebuild_t)
+allow utempter_t sysadm_t:udp_socket { read write };
+
+# --- what enforcement would actually hit in the critical paths ---
+#
+# These came from scanning for denials whose SUBJECT is a critical service -
+# the lockout-risk question rather than the noise question.
+#
+# sudo (staff_sudo_t) only ever trips the inherited-fd class, which this file
+# already dontaudits for other domains: informational, the transition is not
+# blocked, so dontaudit is the right treatment rather than a grant. Plus a
+# statfs on /proc.
+dontaudit staff_sudo_t chkpwd_t:process { noatsecure rlimitinh siginh };
+dontaudit staff_sudo_t sysadm_t:process { noatsecure rlimitinh siginh };
+kernel_getattr_proc(staff_sudo_t)
+
+# --- r16: git in the session's no_new_privs context ---
+# git's remaining denials once staff_git_t came off the permissive list.
+search_dirs_pattern(staff_git_t, user_tmpfs_t, user_tmpfs_t)
+# git talks to a socket the session owns (the agent/wrapper socket)
+allow staff_git_t staff_t:unix_stream_socket { getattr ioctl read write };
+# git's mmap heuristic reads /proc/sys/vm/overcommit_memory
+kernel_read_vm_overcommit_sysctl(staff_git_t)
+# the wrapper runs shell scripts (hooks/pagers) without a transition
+allow staff_git_t shell_exec_t:file { map execute_no_trans };
+
+search_dirs_pattern(staff_dbusd_t, user_home_dir_t, user_home_dir_t)
+search_dirs_pattern(staff_dbusd_t, user_home_t, user_home_t)
+search_dirs_pattern(staff_dbusd_t, user_runtime_t, user_runtime_t)
+mmap_read_files_pattern(staff_screen_t, portage_tmp_t, portage_tmp_t)
+search_dirs_pattern(staff_screen_t, user_home_dir_t, user_home_dir_t)
+search_dirs_pattern(staff_screen_t, user_home_t, user_home_t)
+read_files_pattern(staff_screen_t, user_home_t, user_home_t)
+mmap_read_files_pattern(staff_sudo_t, portage_tmp_t, portage_tmp_t)
+allow sysadm_t staff_screen_t:process getcap;
+# git's wrapper (staff_git_t) runs the shell scripts git needs, talks to the
+# session socket, fetches over https and uses its own dgram socket.
+corecmd_exec_shell(staff_git_t)
+corenet_sendrecv_http_client_packets(staff_git_t)
+allow staff_git_t ssh_t:process2 { nnp_transition nosuid_transition };
+mmap_exec_files_pattern(staff_git_t, shell_exec_t, shell_exec_t)
+# ...and it executes git's hooks out of the *working tree*. Hooks under
+# .git/hooks are git_home_t and were already executable, but a repo that sets
+# core.hooksPath to a directory in the checkout (or any hook kept in the tree)
+# is user_home_t, and git's is_hook_executable() -> access(X_OK) probe failed
+# there with "hint: The 'dsh/hooks/pre-commit' hook was ignored because it's not
+# set as executable." The same probe passes from a shell because the shell is
+# staff_t, which may execute user_home_t - only the git domain could not.
+userdom_exec_user_home_content_files(staff_git_t)
+allow staff_git_t self:unix_dgram_socket { create ioctl };
+
+# r21b: the session opens the modprobe sysctl.
+allow staff_t sysctl_modprobe_t:file read;
+# r21b: ... and writes into a device directory.
+allow staff_t device_t:dir write;

@@ -1,0 +1,225 @@
+policy_module(desktop.system.session, 1.0)
+
+gen_require(`
+  type chkpwd_t;
+  type device_t;
+  type initrc_state_t;
+  type kvm_device_t;
+  type lastlog_t;
+  type pipewire_t;
+  type policykit_t;
+  type proc_psi_t;
+  type rc_exec_t;
+  type rtkit_daemon_t;
+  type staff_bubblewrap_t;
+  type staff_t;
+  type sysadm_t;
+  type sysctl_modprobe_t;
+  type system_dbusd_t;
+  type systemd_logind_t;
+  type systemd_sessions_runtime_t;
+  type tmpfiles_t;
+  type udev_t;
+  type user_bin_t;
+  type user_runtime_t;
+  type utempter_t;
+  type var_lib_t;
+  type var_run_t;
+  type wireplumber_t;
+  type xauth_t;
+  type xdg_data_t;
+  class capability { dac_override dac_read_search net_admin sys_admin sys_ptrace sys_tty_config };
+  class chr_file map;
+  class dir { create getattr open read relabelfrom relabelto search };
+  class fd use;
+  class fifo_file { getattr ioctl open read unlink write };
+  class file { create getattr map open read relabelfrom relabelto unlink write };
+  class lnk_file { create getattr read unlink };
+  class process { getcap noatsecure rlimitinh setexec siginh transition };
+  class udp_socket { getattr node_bind };
+  class unix_dgram_socket { create getattr ioctl sendto };
+  class unix_stream_socket { getattr ioctl read write };
+')
+
+# The user OpenRC session: PAM, pam_openrc, the runlevel engine and its state.
+#
+# This is the arc from r21 to r28 - /run/openrc state, the supervise control
+# channel, executing the runlevel engine at all - plus the session services that
+# the login pulls in (logind, the system and session buses, PolicyKit, X
+# authority, utempter, rtkit) and chkpwd, the PAM helper.
+#
+# The method that found the r28 denial is worth keeping: an EACCES with NO AVC
+# anywhere, visible only by executing the binary as the session domain
+# (sudo -r staff_r -t staff_t). See ../TRIAGE.md.
+
+
+# sesh: the session helper talks to the user's session sockets.
+allow sysadm_t staff_t:unix_stream_socket { read write };
+
+# --- r21: the enforcing boot's findings (system side) ---
+#
+# The user OpenRC session. staff_t (running as root for the user session) creates
+# its state under /run/openrc, which is initrc_state_t - the create was denied and
+# THE USER SESSION DID NOT START. refpolicy has read interfaces for that tree but
+# none for writing it, so this is raw.
+# xdg-desktop-portal watching the flatpak export share (335 denials at boot).
+# files_watch_all_dirs would grant this on every directory; this is narrow.
+allow staff_t var_lib_t:dir watch;
+# executing a user-installed binary out of ~/.local/share
+allow staff_t xdg_data_t:file execute;
+# nvidia-modprobe wants CAP_SYS_ADMIN to create the /dev/nvidia* nodes. Broad
+# capability, but SELinux still type-checks every privileged operation it enables;
+# udev creates the nodes at boot regardless, so this only helps the fallback path.
+allow staff_t self:capability sys_admin;
+# systemd-tmpfiles checkpath at boot
+allow tmpfiles_t self:capability { dac_override dac_read_search sys_tty_config };
+# rtkit asking the audio servers for realtime scheduling
+allow rtkit_daemon_t pipewire_t:process setsched;
+allow rtkit_daemon_t wireplumber_t:process setsched;
+
+# --- r23: the last live finding from the enforcing boot (system side) ---
+#
+# GLib's file monitors watch /run/user/1000, which is user_runtime_t. refpolicy
+# has no watch interface for that type, and `watch` is not under the UBAC
+# constraint, so the permission is written out - the same idiom as the var_lib_t
+# line above.
+allow staff_t user_runtime_t:dir watch;
+
+# --- r24: the 2026-10-03 enforcing boot, second pass ---
+#
+# supervise-daemon writing the user session's own state straight into /run;
+# udev reading the session's seat file; xauth's own dgram socket; and the DSH
+# sandbox reading a symlink out of ~/bin, which is how it execs a shell inside
+# the sandbox.
+allow xauth_t self:unix_dgram_socket ioctl;
+allow staff_bubblewrap_t user_bin_t:lnk_file read;
+
+# --- r25: the 2026-10-03 enforcing boot, third pass (the 14:31 boot) ---
+#
+# The user session's own supervise control channel. r21 granted the directory
+# and file permissions on initrc_state_t but never the fifo the session
+# actually talks through: 844 `read` denials on
+# /run/openrc/supervise-user.branch.ctl, plus the unlink that retires it, the
+# rmdir/relabelfrom/setattr on the tree above it, and the pid file in /run.
+# That, not checkpath, is why the session's services still did not come up on
+# this boot.
+allow staff_t initrc_state_t:dir { write add_name remove_name rmdir relabelfrom setattr };
+allow staff_t initrc_state_t:file { create getattr open read unlink write };
+allow staff_t initrc_state_t:fifo_file { getattr ioctl open read unlink write };
+allow staff_t var_run_t:dir { write remove_name };
+# the session init dropping to the user, and the login record it keeps
+allow staff_t self:capability { setgid chown };
+allow staff_t lastlog_t:file { getattr lock open read write };
+# nvidia-modprobe creating /dev/nvidia-caps
+allow staff_t device_t:dir add_name;
+# r21b granted `read` on the modprobe sysctl; the session opens it as well
+allow staff_t sysctl_modprobe_t:file open;
+# nginx's run directory is NOT granted here on purpose. Two rounds of grants on
+# initrc_runtime_t were the wrong layer entirely: the fault was that /run/nginx
+# carried no label of its own. /run is rebuilt every boot and refpolicy labels
+# its contents with `<<None>>` plus per-path rules, but there was no rule for
+# /run/nginx, so checkpath created it as initrc_runtime_t - a generic init type
+# nginx_t has no business touching - and it did so again on every boot. The fix
+# is one line of file context (see fcontexts.local): /run/nginx(/.*)? is
+# nginx_runtime_t, which the nginx module already grants in full.
+# udev opens the seat file it already reads
+allow udev_t systemd_sessions_runtime_t:file { getattr open read };
+
+# --- r26: the 16:04 boot, the one where the session got as far as PAM ---
+#
+# The session's own state, again: checkpath wanted to relabel /run/openrc/user
+# (left denied on purpose - the context is already right, and relabelfrom across
+# SELinux users is exactly what the UBAC constraint exists to stop, so granting
+# can_change_object_identity to staff_t to silence it would be a bad trade).
+# These are the ones that are genuinely needed: the init chowning the session
+# dir to the user, opening lastlog to record the login, and unlinking the
+# supervise pid file when the session is retired.
+allow staff_t var_run_t:file unlink;
+
+# ---- r28: the session domain could not execute `openrc --user` --------------
+#
+# r25 gave the session everything openrc-user's own checkpath needs, so the
+# *setup* half of the user session works. The launch half did not, and that is
+# what kept dsh, llama, adb, emulator and protonmail down on every boot:
+#
+#     /usr/libexec/rc/sh/openrc-user.sh:
+#         exec openrc --user boot || exit 1
+#
+# /sbin/openrc is rc_exec_t. Upstream grants that entry point to sysadm_t and to
+# the sudo/run_init/tmpfiles categories, but NOT to staff_t, so a confined staff
+# session could not execute the runlevel engine at all. The shell died on that
+# line, and because the default runlevel is only reached *after* `boot` returns,
+# the whole user runlevel was skipped - with an empty failed/ directory, because
+# OpenRC never got far enough to fail a service.
+#
+# Reproduced as pam_openrc actually spawns openrc-user: root uid in the session's
+# own context. That identity is the whole trick, and it is why this hid for so
+# long - sudo on its own lands in sysadm_t, where rc_exec_t is allowed and the
+# bug is invisible:
+#
+#     sudo -r staff_r -t staff_t id -Z        # staff_u:staff_r:staff_t:s0-s0:c0.c1023
+#     sudo -r staff_r -t staff_t /sbin/openrc --user boot
+#       -> /sbin/openrc: Permission denied    (rc 126)
+#
+# Method worth remembering: that EACCES carried NO AVC, in dmesg or in
+# /var/log/audit/audit.log, and staff_t has no dontaudit rules that could hide
+# one - the same silent-denial class TRIAGE.md records for the binhost failure.
+# Grepping the audit log finds nothing; exec'ing the binary as the session domain
+# finds it immediately.
+allow staff_t rc_exec_t:file { execute execute_no_trans getattr ioctl lock map open read };
+
+# checkpath -d -m 0700 -o branch:root /run/openrc/user/branch
+#
+# openrc-user prepares its per-user runtime directory before the runlevel runs.
+# It does that with uid 0 but in the *user's* domain, so it does not own the
+# directory it is chowning and the kernel asks for CAP_FOWNER - which staff_t did
+# not have. This is the login-time AVC:
+#
+#     denied { fowner } for comm="checkpath"
+#     scontext=staff_u:staff_r:staff_t:s0-s0:c0.c1023 tclass=capability
+allow staff_t self:capability fowner;
+
+# Emulator / KVM
+#
+# /dev/kvm is kvm_device_t, mode 0666 root:kvm - so nothing but the policy was
+# in the way - and staff_t had no access to it at all (`sesearch -A -s staff_t -t
+# kvm_device_t` is empty). The session's Android emulator probed it on start, was
+# refused, fell back to software emulation and kept probing: 493 { read } denials
+# on kvm_device_t in the first 85 minutes after the r28 boot. refpolicy ships no
+# interface for kvm_device_t, so this is the raw grant, using the standard
+# chr_file read/write macro.
+allow staff_t kvm_device_t:chr_file rw_chr_file_perms;
+
+selinux_getattr_fs(policykit_t)
+seutil_search_default_contexts(policykit_t)
+
+systemd_read_logind_state(proc_psi_t)
+
+dontaudit system_dbusd_t policykit_t:process { noatsecure rlimitinh siginh };
+dontaudit system_dbusd_t rtkit_daemon_t:process { noatsecure rlimitinh siginh };
+dontaudit system_dbusd_t systemd_logind_t:process { noatsecure rlimitinh siginh };
+dev_rw_dri(system_dbusd_t)
+dev_rw_input_dev(system_dbusd_t)
+
+allow systemd_logind_t self:capability net_admin;
+allow systemd_logind_t staff_t:fd use;
+kernel_getattr_proc(systemd_logind_t)
+ssh_use_sshd_pidfds(systemd_logind_t)
+xserver_use_xdm_fds(systemd_logind_t)
+
+allow utempter_t staff_t:udp_socket { read write };
+
+# logind watches a cgroup file (fs_watch_cgroup_files is the interface for it).
+fs_watch_cgroup_files(systemd_logind_t)
+
+fs_getattr_tmpfs(xauth_t)
+userdom_manage_user_tmp_files(xauth_t)
+
+# r21b: udev checks the session runtime directory (rest of that batch:
+# see desktop.system.nginx.te).
+allow udev_t systemd_sessions_runtime_t:dir search;
+term_use_ptmx(utempter_t)
+
+# chkpwd is the PAM helper; it reads the kernel command line and /proc.
+kernel_getattr_proc(chkpwd_t)
+kernel_read_kernel_sysctls(chkpwd_t)

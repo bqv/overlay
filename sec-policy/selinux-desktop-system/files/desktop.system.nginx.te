@@ -1,0 +1,25 @@
+policy_module(desktop.system.nginx, 1.0)
+
+gen_require(`
+  type httpd_cache_t;
+  type nginx_t;
+  class dir { create getattr open read relabelfrom relabelto search };
+  class file { create getattr map open read relabelfrom relabelto unlink write };
+')
+
+# nginx: it serves :80 and proxies to the local gate on :8080.
+#
+# The packet labels and port types nginx needs live in desktop.system.network,
+# next to the ruleset that assigns them - one consumer per module.
+
+
+# nginx's proxy cache. refpolicy keeps httpd_cache_t for the apache module, so
+# there is no nginx-specific interface for it; the apache cache interfaces exist
+# but grant a different mix, so the perms are written out.
+allow nginx_t httpd_cache_t:dir { add_name remove_name search };
+allow nginx_t httpd_cache_t:file { create open read unlink write };
+
+# r21b: the last few from the enforcing boot - nginx's cache getattr, udev looking
+# at session dirs, ssh reading xdg_config, the session reading the modprobe
+# sysctl, and the unconfined entrypoint for an init script.
+allow nginx_t httpd_cache_t:dir getattr;

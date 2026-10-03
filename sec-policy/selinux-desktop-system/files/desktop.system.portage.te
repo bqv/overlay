@@ -1,0 +1,46 @@
+policy_module(desktop.system.portage, 1.0)
+
+gen_require(`
+  type node_t;
+  type portage_ebuild_t;
+  type portage_fetch_t;
+  type portage_sandbox_t;
+  type portage_t;
+  type staff_sudo_t;
+  type sysadm_t;
+  class fd use;
+  class tcp_socket { getattr name_bind node_bind };
+  class udp_socket { getattr node_bind };
+')
+
+# The ebuild and merge path: portage_t, portage_sandbox_t and portage_fetch_t.
+#
+# Also here: the overlay tree (/var/db/repos, portage_ebuild_t) for the domains
+# that *work* in it rather than being portage - the admin running
+# `make -C <pkg> compile/merge` and the sudo wrapper that runs the capture tool.
+# Maintaining the policy store itself is desktop.system.selinux.
+
+
+files_getattr_default_dirs(portage_fetch_t)
+corenet_sendrecv_http_client_packets(portage_t) # binhosts
+corenet_sendrecv_http_client_packets(portage_sandbox_t)
+corenet_tcp_bind_generic_node(portage_t)
+corenet_udp_bind_generic_node(portage_t)
+
+sysadm_use_fds(portage_sandbox_t)
+
+# Running an ebuild as the admin: `make compile/merge` executes the .ebuild
+# file, so sysadm_t needs to read and execute portage_ebuild_t.
+portage_read_ebuild(sysadm_t)
+can_exec(sysadm_t, portage_ebuild_t)
+
+# Running the capture tool and the build through sudo: the obstacle is the repo
+# tree being portage_ebuild_t. staff_sudo_t is what a `sudo ./aud` or
+# `sudo make -C <pkg> merge` becomes, so without this the policy cannot be
+# triaged or maintained under enforcing at all.
+portage_read_ebuild(staff_sudo_t)
+search_dirs_pattern(staff_sudo_t, portage_ebuild_t, portage_ebuild_t)
+
+allow portage_sandbox_t sysadm_t:fd use;
+allow portage_t node_t:tcp_socket node_bind;
+allow portage_t node_t:udp_socket node_bind;

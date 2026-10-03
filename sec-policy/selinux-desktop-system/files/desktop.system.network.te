@@ -21,6 +21,12 @@ gen_require(`
 	type dhcpd_client_packet_t;
 	class packet { recv send };
 	class icmp_socket { create getopt read setopt write };
+	type dhcpc_script_t;
+	type init_runtime_t;
+	type iptables_t;
+	type nscd_runtime_t;
+	type unlabeled_t;
+	class process { getcap noatsecure rlimitinh setexec siginh transition };
 ')
 
 ########################################
@@ -216,3 +222,35 @@ allow dhcpc_t dhcpd_client_packet_t:packet { send recv };
 # refpolicy has no interface for either - ping_t's own grants are raw allows.
 allow staff_t self:icmp_socket { create getopt read setopt write };
 allow staff_t icmp_packet_t:packet { send recv };
+
+
+# --- moved here when desktop.system.base was split by consumer (2026-10-03) ---
+#
+# dhcpcd's run-hooks script, and the secmark relabel nft performs on the first
+# packet of every flow. Both belong to this module's one consumer: the packet
+# labels and the ruleset in files/ruleset.nftables that assigns them.
+
+kernel_read_kernel_sysctls(dhcpc_script_t)
+nscd_read_runtime_files(dhcpc_script_t)
+selinux_getattr_fs(dhcpc_script_t)
+seutil_search_default_contexts(dhcpc_script_t)
+
+dontaudit dhcpc_t dhcpc_script_t:process { noatsecure rlimitinh siginh };
+# r18: the dhcpc_t unlabeled_t grant is gone. It existed because nothing
+# labelled the DHCP ports; the ruleset maps 67/68/546/547 now, and the
+# lease renewed at 08:16 on 1 Oct - after the labelling - with zero
+# dhcpc_t packet denials. Verified by evidence, not by assumption.
+
+# dhcpcd-run-hook searches the init runtime directory; refpolicy has no search
+# interface for it (only create/delete/dontaudit), so this is a raw allow.
+search_dirs_pattern(dhcpc_script_t, init_runtime_t, init_runtime_t)
+search_dirs_pattern(dhcpc_script_t, nscd_runtime_t, nscd_runtime_t)
+# --- r20c: what the corrected full-log sweep found still missing (part 1) ---
+# Every line here answers a specific tuple that the running policy does not allow,
+# from a sweep that checks each permission separately.
+# THE critical one. nft assigns a secmark to every packet; the first packet of a
+# flow has no label yet, so the assignment is a relabelto from unlabeled_t. Only
+# packet_type is granted (from the original ruleset), and unlabeled_t is not in
+# that attribute - so under enforcing the labelling itself would be denied and
+# traffic would stay unlabelled, taking the whole network half with it.
+allow iptables_t unlabeled_t:packet relabelto;

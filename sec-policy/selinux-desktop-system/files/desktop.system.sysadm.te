@@ -1,0 +1,56 @@
+policy_module(desktop.system.sysadm, 1.0)
+
+gen_require(`
+  type auditd_log_t;
+  type ldconfig_t;
+  type mozilla_t;
+  type nsfs_t;
+  type portage_fetch_t;
+  type portage_sandbox_t;
+  type portage_t;
+  type rtkit_daemon_t;
+  type semanage_t;
+  type setfiles_t;
+  type ssh_t;
+  type staff_t;
+  type sysadm_screen_t;
+  type sysadm_t;
+  type system_dbusd_t;
+  type unlabeled_t;
+  type user_t;
+  attribute domain;
+  class fifo_file { getattr ioctl open read unlink write };
+  class process { getcap noatsecure rlimitinh setexec siginh transition };
+')
+
+# The admin user's session: sysadm_t, and the screen domain derived from it.
+#
+# The sysadmin's own grants. Where a rule here was found while triaging a service
+# (the namespace-file reads, for instance) that is recorded on the rule.
+
+
+files_search_default(sysadm_screen_t)
+
+allow sysadm_t domain:process { getcap }; # htop
+dontaudit sysadm_t ldconfig_t:process { noatsecure rlimitinh siginh };
+dontaudit sysadm_t portage_fetch_t:process { noatsecure rlimitinh siginh };
+allow sysadm_t portage_sandbox_t:process { transition };
+dontaudit sysadm_t portage_sandbox_t:process { noatsecure rlimitinh siginh };
+dontaudit sysadm_t portage_t:process { noatsecure rlimitinh siginh };
+dontaudit sysadm_t semanage_t:process { noatsecure rlimitinh siginh };
+dontaudit sysadm_t setfiles_t:process { noatsecure rlimitinh siginh };
+allow sysadm_t unlabeled_t:process getattr;
+corenet_tcp_bind_generic_node(sysadm_t)
+kernel_read_unlabeled_files(sysadm_t) # htop / proc
+kernel_manage_unlabeled_symlinks(sysadm_t) # htop / proc
+
+read_files_pattern(sysadm_t, auditd_log_t, auditd_log_t)
+allow sysadm_t mozilla_t:process getcap;
+allow sysadm_t rtkit_daemon_t:process getcap;
+allow sysadm_t ssh_t:process getcap;
+allow sysadm_t staff_t:fifo_file write;
+allow sysadm_t staff_t:process getcap;
+allow sysadm_t system_dbusd_t:process getcap;
+allow sysadm_t user_t:process getcap;
+
+getattr_files_pattern(sysadm_t, nsfs_t, nsfs_t)

@@ -1,0 +1,66 @@
+policy_module(desktop.system.tools, 1.0)
+
+gen_require(`
+  type auditd_log_t;
+  type auditd_t;
+  type dhcpc_t;
+  type iptables_t;
+  type portage_ebuild_t;
+  type ss_t;
+  type unconfined_t;
+  type wireplumber_t;
+  attribute domain;
+  class cap_userns sys_ptrace;
+  class capability { dac_override dac_read_search net_admin sys_admin sys_ptrace sys_tty_config };
+  class netlink_kobject_uevent_socket { getattr sendto };
+  class process { getcap noatsecure rlimitinh setexec siginh transition };
+  class udp_socket { getattr node_bind };
+')
+
+# The admin tools a session runs: ss (the socket census), nft, the audit log.
+#
+# `ss -tulpn` walks /proc to map sockets to processes, which is the same access
+# htop needed. Where refpolicy has an interface for that walk it is used; the
+# socket getattrs have no interface and are written out as raw allows, because
+# getattr is read-only metadata.
+
+
+# --- r18: ss, the socket census ---
+#
+# `ss -tulpn` walks /proc/<pid> to map sockets back to the processes that hold
+# them, which is the same access htop/nvtop needed - 17k denials in the retained
+# logs, the single largest source of AVC noise in the triage windows, and `ss` is
+# a normal admin tool rather than something unusual. Same treatment as staff_t:
+# the refpolicy interface for the /proc walk, plus raw allows for the socket
+# getattrs, because refpolicy has no interface for those (domain_getattr_all_
+# domains covers only the process class) and getattr is read-only metadata.
+domain_read_all_domains_state(ss_t)
+allow ss_t domain:{ tcp_socket udp_socket unix_stream_socket unix_dgram_socket } getattr;
+allow ss_t domain:{ netlink_route_socket netlink_kobject_uevent_socket netlink_selinux_socket netlink_generic_socket } getattr;
+
+# --- r18b: what the census and netfilter tools still needed ---
+#
+# domain_read_all_domains_state is dir-only (kernel_search_proc + domain:dir
+# list perms), so `ss -p` still needed the companion interface for the process
+# class - 113 denials in one window. The rest is what a root-run census needs:
+# CAP_SYS_PTRACE to read other processes' /proc entries, the remaining socket
+# classes (rawip/packet/netlink_audit), and dac_read_search.
+domain_getattr_all_domains(ss_t)
+allow ss_t self:capability { dac_read_search sys_ptrace };
+allow ss_t self:cap_userns sys_ptrace;
+allow ss_t domain:{ rawip_socket packet_socket netlink_audit_socket } getattr;
+
+# `sudo nft -f <file>` runs as iptables_t, so loading a ruleset straight out of
+# the overlay needs the same repo access staff_sudo_t got.
+portage_read_ebuild(iptables_t)
+search_dirs_pattern(iptables_t, portage_ebuild_t, portage_ebuild_t)
+
+# the socket census again: two classes it walks that r18/r19 did not name
+allow ss_t wireplumber_t:netlink_kobject_uevent_socket getattr;
+allow ss_t dhcpc_t:udp_socket getattr;
+
+# reading the audit log, and the same getattr htop needed on auditd.
+read_files_pattern(unconfined_t, auditd_log_t, auditd_log_t)
+allow unconfined_t auditd_t:process getcap;
+# the tools also read the repo they are pointed at
+read_files_pattern(iptables_t, portage_ebuild_t, portage_ebuild_t)

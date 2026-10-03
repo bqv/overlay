@@ -1,0 +1,70 @@
+policy_module(desktop.system.selinux, 1.0)
+
+gen_require(`
+  type cgroup_t;
+  type file_context_t;
+  type load_policy_t;
+  type policy_config_t;
+  type selinux_config_t;
+  type semanage_store_t;
+  type semanage_t;
+  type setfiles_t;
+  type tracefs_t;
+  attribute can_change_object_identity;
+  class dir { create getattr open read relabelfrom relabelto search };
+  class file { create getattr map open read relabelfrom relabelto unlink write };
+  class filesystem { associate getattr };
+  class process { getcap noatsecure rlimitinh setexec siginh transition };
+')
+
+# Maintaining this policy under enforcing: semanage_t, setfiles_t, the store.
+#
+# Everything needed for `make -C <pkg> merge` to complete with enforcement on,
+# including the can_change_object_identity attribute - which is not a grant but
+# the only way to satisfy a constraint that sits above the allow rules.
+
+
+allow semanage_t cgroup_t:filesystem getattr;
+allow semanage_t file_context_t:file { relabelfrom relabelto };
+allow semanage_t load_policy_t:process { noatsecure rlimitinh siginh };
+allow semanage_t policy_config_t:file relabelfrom;
+allow semanage_t selinux_config_t:file { relabelfrom relabelto };
+allow semanage_t semanage_store_t:dir { relabelfrom relabelto };
+allow semanage_t semanage_store_t:file { relabelfrom relabelto };
+allow semanage_t setfiles_t:process { noatsecure rlimitinh siginh };
+dev_getattr_fs(semanage_t)
+dev_read_sysfs(semanage_t)
+fs_getattr_pstorefs(semanage_t)
+fs_getattr_tmpfs(semanage_t)
+fs_getattr_xattr_fs(semanage_t)
+kernel_getattr_debugfs(semanage_t)
+kernel_getattr_proc(semanage_t)
+kernel_read_vm_overcommit_sysctl(semanage_t)
+seutil_relabelto_bin_policy(semanage_t)
+term_getattr_pty_fs(semanage_t)
+
+kernel_getattr_proc(setfiles_t)
+kernel_read_unlabeled_state(setfiles_t)
+term_read_console(setfiles_t)
+
+# --- so the policy can be maintained under enforcing ---
+#
+# `make -C <pkg> merge` runs setsebool -P in pkg_postinst, and the audit shows
+# semanage_t denied relabelto across the whole policy store - the ebuild's own
+# post-install step cannot complete with enforcing on. These are refpolicy's
+# interfaces for exactly that, plus the two file types they do not cover.
+seutil_manage_module_store(semanage_t)
+allow semanage_t tracefs_t:filesystem getattr;
+
+# Those allows still left every relabelto denied, because the block is a
+# constraint rather than a missing allow:
+#   (constrain (file (create relabelfrom relabelto))
+#     (or (eq u1 u2) (eq t1 can_change_object_identity)))
+# The store files carry system_u while this runs as staff_u, so eq u1 u2 fails,
+# and can_change_object_identity held only kernel_t. Constraints sit above the
+# allow rules, so attribute membership is the only way to satisfy it - which is
+# exactly what a policy-management domain needs. No neverallow guards it.
+typeattribute semanage_t can_change_object_identity;
+
+# semodule/semanage asking for its own scheduling class during a merge.
+allow semanage_t self:process getsched;

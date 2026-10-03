@@ -9,9 +9,15 @@ all:
 	ebuild *.ebuild manifest
 
 compile:
-	-rm -f $(HEADERS)/desktop.system.base.if $(HEADERS)/desktop.system.mosh.if
+	# Every .if this package has ever installed, by name pattern: an .if that is
+# no longer shipped but is still on the include path defines its interfaces
+# twice and m4 fails the build.
+	-rm -f $(HEADERS)/desktop.system.*.if
 	ebuild *.ebuild manifest clean compile
 
 merge:
-	-rm -f $(HEADERS)/desktop.system.base.if $(HEADERS)/desktop.system.mosh.if
+	# Every .if this package has ever installed, by name pattern: an .if that is
+# no longer shipped but is still on the include path defines its interfaces
+# twice and m4 fails the build.
+	-rm -f $(HEADERS)/desktop.system.*.if
 	ebuild *.ebuild manifest clean merge
