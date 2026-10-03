@@ -1221,3 +1221,37 @@ failed. So there is no denial for that operation, audited or not. The scope was
 deliberately widened rather than narrowed for that test: a permissive type is
 the strongest available instrument, and it came back negative. Nothing in the
 policy is responsible, and the permissive entry was removed again.
+
+## The /run sweep - which generic types are bugs and which are correct
+
+`/run` is a fresh tmpfs every boot, and refpolicy labels its contents with
+`/run/.*  <<None>>` plus per-path exceptions. Verified mechanism: OpenRC's
+`checkpath` consults the policy and applies the **fcontext**, not the parent's
+type - creating `/run/PolicyKit` through it under a `var_run_t` parent yields
+`policykit_runtime_t`. So a file context on disk is what makes a /run label
+survive a reboot, and the tmpfs is irrelevant to it.
+
+Fifteen entries under /run currently carry a generic type. Fourteen of them are
+**correct as they are**, and the discriminator is not the path, it is who
+*consumes* it:
+
+- `/run/udev.pid`, `/run/iwd.pid`, `/run/greetd.pid`, `/run/alsasound`,
+  `/run/utmp`, and the rest are written and read by **init scripts**, which run
+  as `initrc_t`. `initrc_runtime_t` is the type designed for exactly that, and
+  `initrc_t` is granted it. Relabelling `/run/udev.pid` to `udev_runtime_t`
+  because the name matches would **remove** `initrc_t`'s access and break the
+  udev init script: `initrc_t` appears in the access list for
+  `initrc_runtime_t` and does not appear in the one for `udev_runtime_t`. That
+  was checked before it was not done.
+- `/run/nginx` was the exception, and the reason the whole saga happened: the
+  directory is created by an init script (so it got a generic type) but the
+  thing that **uses** it is a confined daemon, `nginx_t`, which has no access to
+  a generic init type. That combination - init-script-created path, confined
+  daemon consumer, no fcontext - is the bug class. It is now fixed at the label
+  (`nginx_runtime_t`, which the nginx module grants in full).
+- `/run/supervise-user.branch.pid` is the same class but has no dedicated type
+  anywhere in refpolicy, so grants on `var_run_t` are the only available answer;
+  those are in r24/r25.
+
+So the rule to carry forward: a generic type under /run is a defect only when a
+*confined* domain owns the path. Check the consumer, not the name.
