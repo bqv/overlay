@@ -1356,14 +1356,34 @@ half, `ausearch -ts boot` for the rest. Cheap to do, and it was not being done.
 ### `Context /run is not valid (left unmapped)` - explained, and harmless
 
 A kernel line at t=9.93 s, immediately after the policy capabilities are printed
-at t=9.80-9.86. It is the kernel's deferred-context-mapping path: something
-stored a context *string* before the policy was loaded and the string it stored
-was `/run`, so when the policy arrived the mapping failed and the object was
-left unmapped. The string is passed through from the caller, which is why it is
-a path rather than a context. It is not fstab (the `/run` line there has been
-commented out since at least 1 October), not any OpenRC script, and not in
-dracut's modules - the caller is still unidentified, and since `/run` ends up
-correctly mounted and correctly labelled `var_run_t` it is cosmetic.
+at t=9.80-9.86, and it is the kernel's deferred-context-mapping path: something
+stored a context *string* before the policy was loaded, the string it stored was
+`/run`, and when the policy arrived that string could not be mapped. That is why
+a path appears where a context belongs - the kernel echoes back whatever the
+caller passed.
+
+**Caller identified: dracut's initramfs.** `/init` in the image mounts /run like
+this, on every boot, because nothing has mounted it yet:
+
+    if ! ismounted /run; then
+        mkdir -m 0755 -p /newrun
+        mount -t tmpfs -o mode=0755,noexec,nosuid,nodev,strictatime tmpfs /newrun
+        cp -a /run/* /newrun
+        mount --move /newrun /run          # <- the only "/run" handed to a mount
+    fi
+
+Between them, fstab, every OpenRC script and every dracut shell script contain
+no `context=` at all, and no surviving mount carries one (`/proc/self/mountinfo`
+shows `context=` on nothing, and `rootcontext=` only on /tmp and /var/tmp, with
+valid values). The single place a bare `/run` is passed to a mount call is that
+`mount --move`, and the timing fits: the string is stored while SELinux is not
+yet initialised and resolved when the policy loads, which is the 9.5-9.9 s
+window. What the kernel then does with a *target path* on a move is inferred,
+not read from source - but nothing else in the boot passes that string.
+
+It is cosmetic. The move succeeds, `/run` is a correctly-labelled `var_run_t`
+tmpfs, no AVC follows from it, and it has been happening on every boot without
+consequence.
 
 ### `/run/alsasound` - the nginx defect, second instance
 
