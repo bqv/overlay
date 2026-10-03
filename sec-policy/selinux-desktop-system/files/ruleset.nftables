@@ -131,6 +131,15 @@ table inet filter {
 		#    loopback flow to :80 would become http_server instead of
 		#    http_client, and the browser's next receive would be denied).
 		# unclassified inbound keeps a label instead of being left unlabeled
+		# 1b. untracked packets - multicast ICMPv6 (router advertisements and
+		#     neighbour discovery) never enters conntrack, so every state guard
+		#     below misses it and it arrives unlabeled. A raw socket (dhcpcd's)
+		#     is then denied the receive, and IPv6 goes with it: accept_ra=0 on
+		#     this box, so dhcpcd is what keeps the address and the default
+		#     route alive.
+		ct state untracked ip6 nexthdr icmpv6 meta secmark set "icmp_server"
+		ct state untracked ip protocol icmp meta secmark set "icmp_server"
+		ct state untracked meta iifname != "lo" meta secmark set "unclassified"
 		ct state new meta iifname != "lo" meta secmark set "unclassified"
 		ct state new meta iifname != "lo" meta secmark set tcp dport map @secmapping_in
 		ct state new meta iifname != "lo" meta secmark set udp dport map @secmapping_in
@@ -160,6 +169,12 @@ table inet filter {
 
 		ct state established,related meta secmark set ct secmark
 
+		# untracked multicast ICMPv6, the send side of the same exchange
+		# (dhcpcd's router solicitation); see the input chain.
+		ct state untracked ip6 nexthdr icmpv6 meta secmark set "icmp_server"
+		ct state untracked ip protocol icmp meta secmark set "icmp_server"
+		ct state untracked oif lo meta secmark set "local"
+		ct state untracked meta oifname != "lo" meta secmark set "unclassified"
 		ct state new oif lo meta secmark set "local"
 		ct state new meta oifname != "lo" meta secmark set "unclassified"
 

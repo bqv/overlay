@@ -565,3 +565,11 @@ allow ssh_t xdg_config_t:dir search;
 allow staff_t sysctl_modprobe_t:file read;
 allow staff_t device_t:dir write;
 allow unconfined_t initrc_exec_t:file entrypoint;
+
+# --- r23: the last live finding from the enforcing boot (system side) ---
+#
+# GLib's file monitors watch /run/user/1000, which is user_runtime_t. refpolicy
+# has no watch interface for that type, and `watch` is not under the UBAC
+# constraint, so the permission is written out - the same idiom as the var_lib_t
+# line above.
+allow staff_t user_runtime_t:dir watch;

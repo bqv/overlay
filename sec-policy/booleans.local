@@ -1,0 +1,29 @@
+# Local boolean settings for this box - the values the shipped policy defaults
+# do NOT give us. Like fcontexts.local these live outside the module store
+# (booleans are settings, not rules), so the repo records them with the command
+# that reapplies them after a store rebuild.
+#
+#   nginx_enable_http_server   (module default: off)
+#
+#     nginx binds :80 on 127.0.0.1 and on the two LAN addresses, so it is an
+#     http server in the sense the refpolicy nginx module means. With the
+#     boolean off, `allow nginx_t http_port_t:tcp_socket name_bind` is inactive
+#     and the master dies during startup with
+#
+#         bind() to 0.0.0.0:80 failed (13: Permission denied)
+#
+#     which is exactly what happened on the 2026-10-03 enforcing boot (the AVC
+#     is at 13:45:34 in the permissive re-test). This is a *persistent* setting,
+#     so it is the one line of policy state that a rebuild would otherwise
+#     quietly reset.
+#
+#     Only this one is needed. nginx_can_network_connect stays OFF on purpose:
+#     the only thing nginx connects to is the auth gate on :8080, which is
+#     http_cache_port_t and is allowed unconditionally, and leaving the boolean
+#     off keeps nginx from reaching arbitrary remote ports.
+#
+# Reapply after a store rebuild with:
+#
+#   setsebool -P nginx_enable_http_server on
+#
+nginx_enable_http_server on

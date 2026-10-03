@@ -1048,3 +1048,59 @@ my mess to avoid, because it is how several restorecons ended up running
 concurrently over the same trees. The UI's job list being empty is a *separate*
 problem: the `workspace`/`session-controller` services are still `pending` from
 the startup `scandir` failure, which a `dsh restart` clears.
+
+## r23 - the last blockers before the reboot (2026-10-03)
+
+Re-tested every **enforced** denial from the 12:19:35-12:32:40 enforcing window
+(39 distinct source/target/class tuples) against the policy loaded after the r21b
+merge. **34 were already allowed** - nginx's cache, the greetd session
+entrypoint, `initrc_state_t`, rtkit's realtime scheduling, crow, mozilla,
+pipewire. Five were not:
+
+- **`nginx_t -> http_port_t:tcp_socket name_bind`** - not a module gap but a
+  boolean. `nginx_enable_http_server` ships **off**, so the nginx module's bind
+  rule is inactive and the master dies with `bind() to 0.0.0.0:80 failed (13:
+  Permission denied)`. This, not the cache getattr, is what actually kept nginx
+  down on the enforcing boot, and it survives every policy rebuild because it is
+  a store setting rather than a rule - hence the new `booleans.local`.
+  `nginx_can_network_connect` stays off deliberately: the proxy target :8080 is
+  `http_cache_port_t`, allowed unconditionally.
+- **`staff_t -> user_runtime_t:dir watch`** - GLib file monitors watching
+  `/run/user/1000`. refpolicy has no watch interface for that type and `watch`
+  is not under the UBAC constraint, so r23 adds the raw allow next to the
+  `var_lib_t` one it mirrors.
+- **four `dhcpc_t -> *:packet` denials**: `http_client_packet_t` (3075),
+  `dns_client_packet_t` (425), `mdns_packet_t` (41), `unlabeled_t` (30 recv +
+  8 send). The first three are dhcpcd holding an `AF_PACKET` socket: it is
+  handed every flow's packets and each is checked against its secmark. DHCP's
+  own packets are marked `dhcp_client`; these are other flows' traffic dhcpcd
+  has no use for, so they stay **denied** - nothing fails - and they are the
+  reason a boot carries ~3.5k AVCs. They cannot be silenced with `dontaudit`
+  while the store is built with dontaudits disabled (`sesearch -D` returns 0
+  rules), which is the open decision recorded elsewhere.
+
+### The `unlabeled_t` half is not noise - it was IPv6
+
+`accept_ra=0` on both interfaces, so the kernel is not doing SLAAC: **dhcpcd** is
+what keeps `2001:14bb:ac:9012::/64` and the default route alive, and it does that
+through a raw socket reading router advertisements. Those are multicast ICMPv6,
+which never enters conntrack, so every `ct state new` / `established,related`
+guard in `ruleset.nftables` misses them and they arrive with **no secmark at
+all**. Under enforcing the receive is denied, the lease lifetimes run out, and
+IPv6 dies about half an hour after boot - while IPv4 keeps working, so it would
+have looked like an unrelated mystery.
+
+Fixed in the ruleset, not by granting `unlabeled_t`: both chains now handle
+`ct state untracked` (ICMP/ICMPv6 -> `icmp_packet_t`, everything else off
+loopback -> the existing `unclassified`/`dynamic_packet_t` bucket, loopback
+output -> `local`). `dhcpc_t` already holds `icmp_packet_t` and
+`dynamic_packet_t`, so no new allow was needed - the packets were simply never
+classified. The three `dhcpc_t` packet types above stay denied.
+
+### Two things checked rather than assumed
+
+- **The LAN ingress path is already clean.** nginx packet denials for the
+  browser (192.168.1.106 -> :80) stop at the previous boot; the current ruleset
+  marks them, and the live established connection produces no `packet` denial.
+- **dontaudits really are absent**: `sesearch -D` returns **0** rules, so a
+  `dontaudit` is not available as a silencing tool on this store.
