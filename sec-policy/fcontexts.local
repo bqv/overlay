@@ -59,3 +59,16 @@
 #   semanage fcontext -a -s system_u -t nginx_runtime_t "/run/nginx(/.*)?"
 #
 /run/nginx(/.*)?    system_u:object_r:nginx_runtime_t:s0
+
+# /run/alsasound - the same defect as /run/nginx, found the same way. checkpath
+# creates it during the alsasound service, there is no fcontext for the path, so
+# it lands in initrc_runtime_t; and the thing that *uses* it is alsactl, a
+# confined daemon (alsa_t), which is denied even `search` - 10 denials a boot.
+# alsa_t already holds the complete permission set for alsa_runtime_t, so the
+# label is the whole fix. (The r24 sweep looked at this path and cleared it
+# because the *creating* process is the init script; the consumer is what
+# matters, which is the lesson of that sweep written down in TRIAGE.)
+#
+#   semanage fcontext -a -s system_u -t alsa_runtime_t "/run/alsasound(/.*)?"
+#
+/run/alsasound(/.*)?    system_u:object_r:alsa_runtime_t:s0

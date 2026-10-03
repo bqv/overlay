@@ -1,6 +1,10 @@
 policy_module(desktop.system.base, 1.0)
 
 gen_require(`
+  type initrc_tmp_t;
+  type NetworkManager_var_lib_t;
+  type NetworkManager_t;
+  type hwclock_t;
   type device_t;
   type lastlog_t;
   type initrc_runtime_t;
@@ -638,3 +642,25 @@ allow udev_t systemd_sessions_runtime_t:file { getattr open read };
 # dir to the user, opening lastlog to record the login, and unlinking the
 # supervise pid file when the session is retired.
 allow staff_t var_run_t:file unlink;
+
+# --- r27: the 16:04 boot, the early half - read from dmesg, not ausearch ---
+#
+# auditd runs in the 'default' runlevel, so everything udev, tmpfiles and
+# hwclock do in 'sysinit' happens BEFORE auditd is up and never reaches
+# /var/log/audit. Those denials are only in the kernel ring. This batch is that
+# half of the boot, and it was invisible to every inventory taken with
+# `ausearch -ts boot` - worth remembering as a method, not just a fix.
+#
+#  - hwclock reading /proc's filesystem attributes at boot
+kernel_getattr_proc(hwclock_t)
+#  - bootmisc's /run cleanup is `mount --bind / $tmpdir`, which SELinux refused:
+#    the bind mount failed and the cleanup was silently skipped. Nothing depended
+#    on it that day, but the intent of the service was not being carried out.
+allow mount_t initrc_tmp_t:dir mounton;
+#  - iwd runs in NetworkManager_t (refpolicy labels /usr/libexec/iwd that way),
+#    and it could not watch its own state directory, nor read the hardware
+#    database udev keeps.
+allow NetworkManager_t NetworkManager_var_lib_t:dir { watch watch_reads };
+systemd_read_hwdb(NetworkManager_t)
+#  - udev looking at namespace files
+fs_getattr_nsfs_files(udev_t)

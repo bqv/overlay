@@ -1339,3 +1339,64 @@ and correctly labelled `var_run_t`, and no /run path has been mislabelled since,
 so it is benign - but the caller is still unidentified. Next step is to grep the
 initramfs *contents* (dracut modules), not the compressed image, which was
 searched and does not contain the string.
+
+## r27 - and a correction to how every boot inventory here was taken
+
+**`ausearch -ts boot` does not show the early boot.** auditd is in the `default`
+runlevel; udev, systemd-tmpfiles, hwclock, mount and alsactl all run in `sysinit`
+and the `boot` runlevel, before it. Their denials never reach
+`/var/log/audit/audit.log`. This boot had 33 such AVCs in the kernel ring and
+`ausearch` showed none of them.
+
+So every "boot inventory" in this file up to r26 was taken from an incomplete
+source, and that is why this batch looks new: it was there the whole time. From
+now on a boot is triaged from **both**: `dmesg | grep type=1400` for the early
+half, `ausearch -ts boot` for the rest. Cheap to do, and it was not being done.
+
+### `Context /run is not valid (left unmapped)` - explained, and harmless
+
+A kernel line at t=9.93 s, immediately after the policy capabilities are printed
+at t=9.80-9.86. It is the kernel's deferred-context-mapping path: something
+stored a context *string* before the policy was loaded and the string it stored
+was `/run`, so when the policy arrived the mapping failed and the object was
+left unmapped. The string is passed through from the caller, which is why it is
+a path rather than a context. It is not fstab (the `/run` line there has been
+commented out since at least 1 October), not any OpenRC script, and not in
+dracut's modules - the caller is still unidentified, and since `/run` ends up
+correctly mounted and correctly labelled `var_run_t` it is cosmetic.
+
+### `/run/alsasound` - the nginx defect, second instance
+
+10 denied `search` calls a boot: `alsa_t -> initrc_runtime_t:dir`. checkpath
+creates `/run/alsasound` with no fcontext for the path, so it lands in the
+generic init type, and the thing that *uses* it - alsactl, a confined daemon -
+cannot even search it. `alsa_t` already holds the complete permission set for
+`alsa_runtime_t`, so one file context is the whole fix, exactly as for
+`/run/nginx`.
+
+The r24 sweep looked at this path and cleared it. Two mistakes, both worth
+keeping: it asked what *created* the path (an init script) rather than what
+*consumes* it (a confined daemon), and its candidate-type lookup was keyed on
+the path's own name, so `alsasound` never matched `alsa_runtime_t`. The
+discriminator recorded in that sweep is still right; the search for candidates
+was too literal.
+
+### The rest of the early boot
+
+- `hwclock` reading `/proc`'s filesystem attributes; `mount --bind / $tmpdir`
+  (bootmisc's /run cleanup) refused `mounton`, so the cleanup was silently
+  skipped; iwd - which refpolicy runs in `NetworkManager_t` - could not watch
+  `/var/lib/iwd` nor read udev's `hwdb.bin`; udev could not `getattr` an nsfs
+  entry. All granted.
+- `/var/run` was `unlabeled_t` for the first ~25 s: systemd-tmpfiles, udevd and
+  udev's net.sh were all denied reading it. It is `var_run_t` now because
+  tmpfiles recreated the symlink and labelled it on the way. Why it was
+  unlabeled is still unknown - nothing else on the filesystem is.
+- `/dev/snd/controlC*` were still `device_t` when alsactl first ran and are
+  `sound_device_t` now, so sound restore at boot races udev's relabelling.
+  Left alone: `alsa_t` reading `device_t` would be the blanket grant this
+  policy exists to avoid, and alsactl retries.
+- `/usr/portage` - an empty directory left from the old tree location - was the
+  only unlabeled object on the whole filesystem. Relabelled to
+  `portage_ebuild_t` by `restorecon`, which is what refpolicy intends for that
+  path.
