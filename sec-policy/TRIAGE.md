@@ -19,6 +19,45 @@ Decide each pattern by what it does under enforcing:
 - `dontaudit` only where nothing functionally fails;
 - anything that cannot be resolved gets recorded as such, not guessed at.
 
+### Method: the permissive window, instead of a run-observe-allow loop
+
+Bringing a new subsystem up with one allow per denial costs a round trip each time,
+and it cannot find the denials that are never audited at all. A permissive *domain*
+logs every check it would have failed, so a single run of the workload yields the
+whole list. That class is not hypothetical here: the rc_exec_t exec and the binhost
+write both produced EACCES with no AVC anywhere, and only a permissive type exposed
+them.
+
+Tool: `~/bin/selinux-permissive-audit` (Python, no extension, permanent home ~/bin).
+
+    selinux-permissive-audit arm <domain> [<domain>...]
+    ... run the workload once ...
+    selinux-permissive-audit disarm     # reverts, then prints the window's denials
+    selinux-permissive-audit status     # is a window still open?
+
+Design points that matter:
+
+* **The store persists.** `semanage permissive` writes to /var/lib/selinux/mcs, so a
+  forgotten window SURVIVES A REBOOT. The tool refuses to arm over an open window,
+  records what it armed in ~/.cache/selinux-permissive-audit.state, and says so
+  loudly at arm time.
+* **Revert before reporting.** disarm removes the domains first and only then reads
+  the audit window, so a failure while reporting cannot leave the policy loose. A
+  pre-existing entry is preserved - verified by arming cupsd_t with gpg_pinentry_t
+  already permissive, disarming, and finding exactly ['gpg_pinentry_t'] left.
+* **Fail-closed.** A type that semanage cannot resolve (xguest_t does not exist in
+  this policy) leaves no state file and nothing armed - verified by accident.
+* **The report is filtered to the armed domains**, on `scontext=[^ ]*:<domain>:`,
+  because that is where permissive logs them; unfiltered, the packet/secmark flood
+  drowns the output.
+
+Complement, not substitute: `semodule -D -B` turns off the dontaudit rules, which a
+permissive window does not reveal. Re-enable with `semodule -B` and check
+`sesearch --dontaudit -c file -p read` returns a few hundred rules - note `-D` is
+NOT sesearch's dontaudit flag, `--dontaudit` is (that cost me a false alarm on
+2026-10-03). Both instruments were used that day; neither replaces the other.
+
+
 ## Settled
 
 | pattern | decision | mechanism |
