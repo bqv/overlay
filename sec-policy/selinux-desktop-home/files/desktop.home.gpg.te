@@ -39,6 +39,7 @@ gen_require(`
   type gpg_runtime_t;
   type gpg_secret_t;
   type ptmx_t;
+  type staff_t;
 ')
 
 allow gpg_t self:unix_stream_socket connectto;
@@ -48,3 +49,19 @@ allow gpg_t gpg_secret_t:dir watch;
 allow gpg_t ptmx_t:chr_file rw_chr_file_perms;
 allow gpg_agent_t ptmx_t:chr_file rw_chr_file_perms;
 allow gpg_pinentry_t ptmx_t:chr_file rw_chr_file_perms;
+
+# r33: a session shell must be able to reach the agent
+#
+# gpg, gpgconf and pass become gpg_t via the transition off gpg_exec_t, and gpg_t
+# already had the runtime socket permissions. gpg-connect-agent does NOT transition
+# - it stays staff_t - so from a plain session shell it reported "no gpg-agent
+# running in this session" with a live agent behind it, because staff_t is denied
+# `search` on gpg_runtime_t. That is also the path the ssh agent needs
+# (SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/gnupg/S.gpg-agent.ssh).
+#
+# refpolicy has the interface for exactly this: gpg_stream_connect_agent grants the
+# client connectto on gpg_agent_tmp_t - the type the agent's sockets actually carry
+# in /run/user/<uid>/gnupg - plus directory search on gpg_runtime_t and
+# gpg_secret_t. ssh.if and systemd.if call it for their own domains, so this is the
+# policy's own answer rather than a grant of my invention.
+gpg_stream_connect_agent(staff_t)
