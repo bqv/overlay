@@ -32,14 +32,19 @@ policy_module(desktop.home.gpg, 1.0)
 #               using a pty from allocating one - and this tree has no
 #               dev_rw_ptmx interface at all.
 #
+
 gen_require(`
-  type gpg_t;
   type gpg_agent_t;
   type gpg_pinentry_t;
   type gpg_runtime_t;
   type gpg_secret_t;
+  type gpg_t;
   type ptmx_t;
   type staff_t;
+  class chr_file { getattr ioctl open read write };
+  class dir { add_name create getattr mounton open read remove_name search relabelfrom relabelto };
+  class process { execmem getcap noatsecure ptrace rlimitinh setexec setsched siginh transition };
+  class unix_stream_socket { getattr ioctl read write };
 ')
 
 allow gpg_t self:unix_stream_socket connectto;
@@ -65,3 +70,5 @@ allow gpg_pinentry_t ptmx_t:chr_file rw_chr_file_perms;
 # gpg_secret_t. ssh.if and systemd.if call it for their own domains, so this is the
 # policy's own answer rather than a grant of my invention.
 gpg_stream_connect_agent(staff_t)
+
+dontaudit staff_t gpg_t:process { noatsecure rlimitinh siginh };

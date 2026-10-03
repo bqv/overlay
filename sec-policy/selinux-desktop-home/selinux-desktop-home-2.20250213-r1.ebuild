@@ -4,7 +4,8 @@
 EAPI="7"
 
 IUSE=""
-MODS="desktop.home desktop.home.pipewire desktop.home.shortwave desktop.home.firefox desktop.home.stremio desktop.home.gajim desktop.home.crow desktop.home.openrc desktop.home.gpg"
+MODS="desktop.home desktop.home.pipewire desktop.home.shortwave desktop.home.firefox desktop.home.stremio desktop.home.gajim desktop.home.crow desktop.home.openrc desktop.home.gpg
+	desktop.home.java"
 BASEPOL="2.20250213-r1"
 POLICY_FILES="
 	desktop.home.fc desktop.home.if desktop.home.te
@@ -16,6 +17,7 @@ POLICY_FILES="
 	desktop.home.crow.fc desktop.home.crow.if desktop.home.crow.te
 	desktop.home.openrc.fc desktop.home.openrc.if desktop.home.openrc.te
 	desktop.home.gpg.fc desktop.home.gpg.if desktop.home.gpg.te
+	desktop.home.java.fc desktop.home.java.if desktop.home.java.te
 "
 POLICY_TYPES="mcs"
 

@@ -1,27 +1,27 @@
 policy_module(desktop.home.firefox, 1.0.0)
 
 gen_require(`
+  type gnome_xdg_config_t;
+  type mozilla_t;
   type mozilla_tmp_t;
   type mozilla_tmpfs_t;
-  type user_fonts_cache_t;
-  type gnome_xdg_config_t;
   type proc_psi_t;
+  type stremio_server_t;
   type sysctl_vm_overcommit_t;
+  type unreserved_port_t;
+  type user_fonts_cache_t;
   type user_home_t;
   type user_runtime_t;
-  type xdg_cache_t;
-  class file { create getattr ioctl lock map open read relabelfrom relabelto rename setattr unlink write };
   type var_lib_t;
+  type xdg_cache_t;
   type xserver_t;
   type xserver_tmpfs_t;
+  class dir { add_name create getattr mounton open read remove_name search relabelfrom relabelto };
+  class file { create getattr map open read unlink write relabelfrom relabelto };
+  class lnk_file { create read unlink };
+  class sock_file { create setattr write };
+  class tcp_socket name_bind;
   class unix_dgram_socket sendto;
-	role staff_r;
-	type staff_t;
-	type mozilla_t;
-	type stremio_server_t;
-	type unreserved_port_t;
-	type user_runtime_t;
-	type var_lib_t;
 ')
 
 allow mozilla_t unreserved_port_t:tcp_socket name_connect;
@@ -70,3 +70,6 @@ allow mozilla_t mozilla_tmp_t:file execute;
 allow mozilla_t xdg_cache_t:file { append getattr lock open read write };
 allow mozilla_t gnome_xdg_config_t:file { open read };
 allow mozilla_t proc_psi_t:file { getattr open read };
+
+# firefox's WebContent reads its own cgroup (/sys/fs/cgroup/.../cpu.max).
+fs_read_cgroup_files(mozilla_t)
