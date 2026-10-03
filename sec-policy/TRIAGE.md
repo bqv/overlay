@@ -1184,3 +1184,40 @@ terminal fd, so the domain change broke `fd use` before any question about
 reading labels arose. The user will run htop as root instead, and the
 `sysadm_t domain:process getcap` grant that already exists for that is the
 sanctioned route.
+
+## r25 - the 2026-10-03 enforcing boot, third pass (the 14:31 boot)
+
+The session came up by hand again, and this time the log said why in volume:
+**844 denials** of
+
+    staff_t -> initrc_state_t:fifo_file read   name="supervise-user.branch.ctl"
+
+r21 had granted the initrc_state_t *directory* and *file* permissions but never
+the **fifo** the user session actually talks through, nor the `unlink` that
+retires it, nor the `rmdir`/`relabelfrom`/`setattr` on the tree above it, nor
+`setgid` for the session init dropping to the user. All of that is here now.
+
+The `checkpath` relabel from r24 did work - this boot got past it and stopped
+one layer further in, which is the only reason the fifo denial is visible at all.
+
+nginx got past the address too: the wildcard listen removed the error-99 class
+entirely, and it then died on
+
+    open() "/run/nginx/nginx.pid" failed (13: Permission denied)
+
+because checkpath creates `/run/nginx` as `initrc_runtime_t`, for which
+refpolicy has no fcontext and `nginx_t` had no permission at all - not even
+`search`.
+
+Also granted: crow reading its own config's attributes, and mozilla's temp-file
+execution, nvidia shader cache, gtk config read and psi open.
+
+### Firefox is not an SELinux problem (recorded so it is not re-investigated)
+
+A theme install fails with "Couldn't update your theme. Check your connection
+and try again." Making `mozilla_t` a **permissive type** - which allows every
+check and still logs the denial - produced **zero** AVCs, and the install still
+failed. So there is no denial for that operation, audited or not. The scope was
+deliberately widened rather than narrowed for that test: a permissive type is
+the strongest available instrument, and it came back negative. Nothing in the
+policy is responsible, and the permissive entry was removed again.

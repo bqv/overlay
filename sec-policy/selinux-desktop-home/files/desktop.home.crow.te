@@ -131,7 +131,7 @@ crow_exec(staff_t);
 #============= crow_t ==============
 
 # r21: crow's own config, the font cache it reads, and its udp socket.
-allow crow_t xdg_config_t:file { open read write };
+allow crow_t xdg_config_t:file { getattr open read write };
 allow crow_t fonts_t:dir getattr;
 allow crow_t self:udp_socket create;
 

@@ -1,6 +1,9 @@
 policy_module(desktop.system.base, 1.0)
 
 gen_require(`
+  type device_t;
+  type lastlog_t;
+  type initrc_runtime_t;
   type staff_bubblewrap_t;
   type systemd_sessions_runtime_t;
   type sysctl_modprobe_t;
@@ -88,7 +91,7 @@ gen_require(`
   class unix_dgram_socket { create getattr ioctl sendto };
   class unix_stream_socket { getattr ioctl read write };
   class chr_file map;
-  class fifo_file write;
+  class fifo_file { getattr ioctl open read unlink write };
   class security read_policy;
   class tcp_socket { getattr name_bind node_bind };
   class udp_socket { getattr node_bind };
@@ -585,3 +588,31 @@ allow staff_t var_run_t:dir write;
 allow udev_t systemd_sessions_runtime_t:file read;
 allow xauth_t self:unix_dgram_socket ioctl;
 allow staff_bubblewrap_t user_bin_t:lnk_file read;
+
+# --- r25: the 2026-10-03 enforcing boot, third pass (the 14:31 boot) ---
+#
+# The user session's own supervise control channel. r21 granted the directory
+# and file permissions on initrc_state_t but never the fifo the session
+# actually talks through: 844 `read` denials on
+# /run/openrc/supervise-user.branch.ctl, plus the unlink that retires it, the
+# rmdir/relabelfrom/setattr on the tree above it, and the pid file in /run.
+# That, not checkpath, is why the session's services still did not come up on
+# this boot.
+allow staff_t initrc_state_t:dir { write add_name remove_name rmdir relabelfrom setattr };
+allow staff_t initrc_state_t:file { create getattr open read unlink write };
+allow staff_t initrc_state_t:fifo_file { getattr ioctl open read unlink write };
+allow staff_t var_run_t:dir { write remove_name };
+# the session init dropping to the user, and the login record it keeps
+allow staff_t self:capability setgid;
+allow staff_t lastlog_t:file { read write };
+# nvidia-modprobe creating /dev/nvidia-caps
+allow staff_t device_t:dir add_name;
+# r21b granted `read` on the modprobe sysctl; the session opens it as well
+allow staff_t sysctl_modprobe_t:file open;
+# nginx's run directory. checkpath creates /run/nginx as initrc_runtime_t -
+# refpolicy has no fcontext for the path - and nginx_t cannot even search it,
+# so the master cannot write its pid file and exits.
+allow nginx_t initrc_runtime_t:dir search;
+allow nginx_t initrc_runtime_t:file { create getattr open read unlink write };
+# udev opens the seat file it already reads
+allow udev_t systemd_sessions_runtime_t:file open;

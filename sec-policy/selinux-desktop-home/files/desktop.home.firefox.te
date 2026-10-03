@@ -1,6 +1,8 @@
 policy_module(desktop.home.firefox, 1.0.0)
 
 gen_require(`
+  type mozilla_tmp_t;
+  type mozilla_tmpfs_t;
   type user_fonts_cache_t;
   type gnome_xdg_config_t;
   type proc_psi_t;
@@ -60,3 +62,11 @@ allow mozilla_t proc_psi_t:file read;
 allow mozilla_t gnome_xdg_config_t:dir search;
 allow mozilla_t user_fonts_cache_t:lnk_file create;
 allow mozilla_t xserver_tmpfs_t:file map;
+
+# r25: writing its own temp files and executing them, the nvidia shader cache,
+# reading gtk's config (not just searching the dir) and opening psi.
+allow mozilla_t mozilla_tmpfs_t:file execute;
+allow mozilla_t mozilla_tmp_t:file execute;
+allow mozilla_t xdg_cache_t:file { append open read write };
+allow mozilla_t gnome_xdg_config_t:file read;
+allow mozilla_t proc_psi_t:file open;
