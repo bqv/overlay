@@ -145,6 +145,17 @@ table inet filter {
 
 		# 1c. any other packet no state guard above reaches
 		ct state untracked meta iifname != "lo" meta secmark set "unclassified"
+		# 1d. invalid packets - conntrack could not associate them with any flow
+		#     (a retransmitted SYN whose entry has been retired, or a packet that
+		#     arrives outside the window). `invalid` is the one state no guard
+		#     above matches, so these were the only off-box packets to leave with
+		#     no secmark at all: they arrive as unlabeled_t, which every domain is
+		#     denied, and are dropped. That is what kept the LAN door shut -
+		#     nginx_t -> unlabeled_t:packet recv, five packets per attempt, every
+		#     few minutes, from the browser at 192.168.1.106.
+		ct state invalid iifname != "lo" meta secmark set "unclassified"
+		ct state invalid iifname != "lo" meta secmark set tcp dport map @secmapping_in
+		ct state invalid iifname != "lo" meta secmark set udp dport map @secmapping_in
 		ct state new meta iifname != "lo" meta secmark set "unclassified"
 		ct state new meta iifname != "lo" meta secmark set tcp dport map @secmapping_in
 		ct state new meta iifname != "lo" meta secmark set udp dport map @secmapping_in
@@ -178,6 +189,9 @@ table inet filter {
 		ip protocol icmp meta secmark set "icmp_server"
 		ct state untracked oif lo meta secmark set "local"
 		ct state untracked meta oifname != "lo" meta secmark set "unclassified"
+		# invalid off-box traffic, as in the input chain
+		ct state invalid oif lo meta secmark set "local"
+		ct state invalid oifname != "lo" meta secmark set "unclassified"
 		ct state new oif lo meta secmark set "local"
 		ct state new meta oifname != "lo" meta secmark set "unclassified"
 
