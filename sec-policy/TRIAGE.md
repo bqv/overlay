@@ -1110,3 +1110,29 @@ were simply never classified. The three `dhcpc_t` packet types above stay denied
   marks them, and the live established connection produces no `packet` denial.
 - **dontaudits really are absent**: `sesearch -D` returns **0** rules, so a
   `dontaudit` is not available as a silencing tool on this store.
+
+## r23c - the htop domain (started, not finished)
+
+Asking for htop's SECURITY column to work and **only** htop's means a domain of
+its own, because SELinux cannot key a rule on a binary: once `staff_t` holds a
+permission, `ps`, `top` and `pgrep` hold it too. So `desktop.home.htop` gives
+`/usr/bin/htop` its own `htop_exec_t` / `htop_t` with `domain_getattr_all_domains`,
+and nothing else changes domain.
+
+The mechanism is worth recording because it is invisible in the audit log.
+Reading `/proc/<pid>/attr/current` goes through `selinux_getprocattr()`, which
+checks `process getattr` against the **target** domain and passes **no audit
+data**. So the denial never reaches `ausearch` - htop printed `n/a` and the log
+was empty, which is why the earlier "0 AVCs, so not SELinux" conclusion was
+wrong. `ps` cannot do it today either; it shows `-` for exactly the same reason.
+
+**State: not finished.** The domain compiles, `/usr/bin/htop` is relabelled
+`htop_exec_t`, and a permissive run of the new domain produced ten denial groups
+that are now all closed - `getcap` on every domain, `/proc/sys/kernel`,
+`nsfs`, nscd, `/dev/tty`, htoprc write, `setcap`, `cap_userns sys_ptrace`, and
+the shell's signal/sigkill - with **zero** AVCs on two further runs, one of them
+under enforcing. But the column still shows `n/a` under enforcing, so at least
+one permission is still missing and it will not show up in the audit log either.
+Deferred to after the enforcing reboot; the next step is to find it from the
+htop side (its own `getpidcon()` path and which field id the config actually
+enables) rather than from the log.
