@@ -1606,3 +1606,42 @@ Two honest caveats about attribution and about what a harness can prove:
 * /run is mounted noexec, which is why an exec *through* a path inside /run
   returns EPERM regardless of labels. It does not stop this chain: the unit is
   reached through a symlink whose target is on the root filesystem.
+
+### Emulator: the /dev/kvm grant, and proof that the remaining loop is not policy
+
+/dev/kvm is kvm_device_t at mode 0666 root:kvm and staff_t had no rules on it at
+all. The launcher (~/bin/emulator-run, execline) ends in
+
+    exec .../emulator -avd x86native -no-window -no-audio -no-boot-anim
+         -no-snapshot -accel on -gpu swiftshader_indirect -memory 4096 -cores 4
+
+and `-accel on` is mandatory, so with KVM refused every start died immediately and
+supervise-daemon - which for this service has respawn_max=0 and respawn_delay=10 -
+respawned it forever: 518 { read } denials on kvm_device_t at roughly one per 10s,
+exactly the respawn delay. The runlevel still showed the service as `started`
+throughout, because a service with respawn_max=0 never fails - which is why the
+loop was invisible in rc-status.
+
+Granted, matching the policy's own Android domain exactly: android_java_t already
+has kvm_device_t:chr_file { append getattr ioctl lock open read write } and, for
+KVM, deliberately no `map`; staff_t now has the identical set. Verified live:
+open("/dev/kvm", O_RDWR) succeeds, KVM_GET_API_VERSION returns 12, and the running
+qemu holds 6 fds to it.
+
+Checked and not needed: -gpu swiftshader_indirect (no DRI), -no-audio (no sound),
+-no-window (no X), and no /dev/net/tun, /dev/vhost-net, /dev/vhost-vsock or
+/dev/uhid exists on the box (userspace slirp/netsim instead). /dev/rfkill is
+readable, and the AVD tree is android_home_t and is written normally during each
+attempt.
+
+So the policy side is complete, and the remaining failure was settled rather than
+guessed: `semodule -D -B` disables the dontaudit rules (logging only - enforcement
+is unchanged), and with every denial logged, qemu and the emulator produced ZERO
+denials. The emulator still restarts every 20-30 seconds, dying silently during
+guest startup - 36 attempts, each ending at the same log line, an empty kernel log,
+no OOM, 9GB RAM free - so that is a guest/AVD matter, not policy.
+
+Incidentally, that experiment also surfaced two upstream-dontaudited and benign
+classes that are otherwise invisible: Firefox's RenderThread { execheap } (a JIT
+probing for an executable heap, normal to deny) and qsearch { read } on a
+portage_conf_t symlink (a portage query tool, the usual confined read).
