@@ -1420,3 +1420,90 @@ was too literal.
   only unlabeled object on the whole filesystem. Relabelled to
   `portage_ebuild_t` by `restorecon`, which is what refpolicy intends for that
   path.
+
+## r28 - why the user session never started (three layers, one symptom)
+
+Symptom: X and i3 come up from greetd, then nothing - no dsh, llama, adb,
+emulator or protonmail. `rc-status --user` showed no failures because OpenRC was
+never reached; the session's services have to be started by hand.
+
+The launcher is `/usr/libexec/rc/sh/openrc-user.sh`, run by pam_openrc, and its
+first real act is `exec openrc --user boot || exit 1`. Everything below that line
+is unreachable if any of the three layers fails.
+
+### Layer 1 - no syslog daemon on the box (the actual abort)
+
+`openrc-user` opens a log socket in its first milliseconds and treats failure as
+fatal:
+
+    socket(AF_UNIX, SOCK_DGRAM|SOCK_CLOEXEC) = 3
+    connect(3, {sun_path="/dev/log"}, 110) = -1 ENOENT
+    exit_group(-1)                          -> exit 255
+
+There is no /dev/log because `app-admin/metalog` was unmerged (emerge.log,
+2026-08-16) and its init script survived only as a protected conffile. Every
+error openrc-user would have logged went to a socket that did not exist, which is
+why this was invisible for weeks. Restored: metalog reinstalled (and recorded in
+@world, so no depclean takes it again) and added to the default runlevel.
+
+The connect itself needs no new policy - `allow staff_t syslogd_t:unix_dgram_socket
+sendto` already exists (boolean user_all_users_send_syslog). Proof that the target
+label is the only thing missing: with a stand-in socket bound by a non-syslogd_t
+process the audit shows `{ sendto } unix_dgram_socket ... -> staff_u:sysadm_r:sysadm_t`,
+i.e. the denial was against the test process, not the domain.
+
+### Layer 2 - staff_t could not execute /sbin/openrc (rc_exec_t)
+
+sbin/openrc is rc_exec_t. Upstream allows that entry point to sysadm_t and the
+system/sudo categories but NOT to staff_t, so `openrc --user boot` died with
+EACCES (rc 126) and the escape hatch above it took the whole default runlevel with
+it. Fixed in desktop.system.base.te:
+
+    allow staff_t rc_exec_t:file { execute execute_no_trans getattr ioctl lock map open read };
+
+This one produced NO AVC at all (see the method note below) - grepping
+/var/log/audit found nothing.
+
+### Layer 3 - checkpath and lastlog
+
+    denied { fowner } for comm="checkpath"   (it chowns /run/openrc/user/$USER
+                                              with uid 0 but in the user's domain)
+    denied { lock } for comm="openrc-user"   (7x per login, /var/log/lastlog)
+
+Both granted in the same module. The `* chdir: Permission denied` warning that
+remains is correct policy - OpenRC tries to chdir("$HOME") as uid 0, i.e. /root -
+and rc stays 0.
+
+### Layer 4 - contexts/users had no key for a *session* context
+
+Caught while the layers above were still masking it. Every key in
+contexts/users/<selinux-user> is a login program (local_login_t, xdm_t, sshd_t,
+crond_t, the su/sudo wrappers). openrc-user opens a SECOND PAM session from the
+session's own context, and there was no key for that, so the lookup fell through
+to failsafe_context = `sysadm_r:sysadm_t:s0`: right role and type, but a bare s0
+where the session carries s0-s0:c0.c1023. The exec was then refused by the MCS
+constraint (l1 eq l2), not by a missing allow. There was no contexts/users/sysadm_u
+file at all, so every `stem` session had the same gap. See contexts.local.
+
+### Method notes (these cost the most time)
+
+* **The identity is the whole trick.** pam_openrc spawns openrc-user as root uid
+  but in the *session's* context. `sudo` alone lands in sysadm_t, where rc_exec_t
+  is allowed and the bug is invisible; `sudo -r staff_r -t staff_t` gives
+  `staff_u:staff_r:staff_t:s0-s0:c0.c1023` with uid 0, and that reproduces
+  everything. All three layers were found or confirmed only in that identity.
+* **"No AVC" does not mean "not SELinux"** - the third time this box has taught
+  that lesson (see the binhost failure). The rc_exec_t denial left no audit
+  record: no dontaudit covers it, auditctl reports rate_limit 0 and lost 0, and
+  dmesg had nothing. Exec'ing the binary as the session domain found it in one
+  step; reading the audit log never would have.
+* **Isolate with XDG_CONFIG_HOME and a scratch runlevel.** Pointing
+  XDG_CONFIG_HOME at a throwaway `rc/` tree with empty runlevels exercises the
+  real openrc-user, the real script and the real runlevel engine while starting
+  none of the user's services. A dummy service that touches a file proves the
+  engine actually runs services. Runlevel symlinks in ~/.config/rc/runlevels are
+  absolute - a relative `../init.d/x` silently does nothing.
+* **OpenRC 0.64 authenticates interactive service starts** through PAM
+  (/etc/pam.d/system-services), so `rc-service metalog start` prompts even under
+  sudo -n, and three failed attempts lock the account (pam_faillock). Boot-time
+  runlevel starts are not affected. Clear a lockout with `faillock --user X --reset`.

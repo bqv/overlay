@@ -12,6 +12,7 @@ gen_require(`
   type systemd_sessions_runtime_t;
   type sysctl_modprobe_t;
   type initrc_exec_t;
+  type rc_exec_t;
   type fonts_t;
   type xserver_tmpfs_t;
   type session_dbusd_runtime_t;
@@ -616,7 +617,7 @@ allow staff_t initrc_state_t:fifo_file { getattr ioctl open read unlink write };
 allow staff_t var_run_t:dir { write remove_name };
 # the session init dropping to the user, and the login record it keeps
 allow staff_t self:capability { setgid chown };
-allow staff_t lastlog_t:file { getattr open read write };
+allow staff_t lastlog_t:file { getattr lock open read write };
 # nvidia-modprobe creating /dev/nvidia-caps
 allow staff_t device_t:dir add_name;
 # r21b granted `read` on the modprobe sysctl; the session opens it as well
@@ -664,3 +665,46 @@ allow NetworkManager_t NetworkManager_var_lib_t:dir { watch watch_reads };
 systemd_read_hwdb(NetworkManager_t)
 #  - udev looking at namespace files
 fs_getattr_nsfs_files(udev_t)
+
+# ---- r28: the session domain could not execute `openrc --user` --------------
+#
+# r25 gave the session everything openrc-user's own checkpath needs, so the
+# *setup* half of the user session works. The launch half did not, and that is
+# what kept dsh, llama, adb, emulator and protonmail down on every boot:
+#
+#     /usr/libexec/rc/sh/openrc-user.sh:
+#         exec openrc --user boot || exit 1
+#
+# /sbin/openrc is rc_exec_t. Upstream grants that entry point to sysadm_t and to
+# the sudo/run_init/tmpfiles categories, but NOT to staff_t, so a confined staff
+# session could not execute the runlevel engine at all. The shell died on that
+# line, and because the default runlevel is only reached *after* `boot` returns,
+# the whole user runlevel was skipped - with an empty failed/ directory, because
+# OpenRC never got far enough to fail a service.
+#
+# Reproduced as pam_openrc actually spawns openrc-user: root uid in the session's
+# own context. That identity is the whole trick, and it is why this hid for so
+# long - sudo on its own lands in sysadm_t, where rc_exec_t is allowed and the
+# bug is invisible:
+#
+#     sudo -r staff_r -t staff_t id -Z        # staff_u:staff_r:staff_t:s0-s0:c0.c1023
+#     sudo -r staff_r -t staff_t /sbin/openrc --user boot
+#       -> /sbin/openrc: Permission denied    (rc 126)
+#
+# Method worth remembering: that EACCES carried NO AVC, in dmesg or in
+# /var/log/audit/audit.log, and staff_t has no dontaudit rules that could hide
+# one - the same silent-denial class TRIAGE.md records for the binhost failure.
+# Grepping the audit log finds nothing; exec'ing the binary as the session domain
+# finds it immediately.
+allow staff_t rc_exec_t:file { execute execute_no_trans getattr ioctl lock map open read };
+
+# checkpath -d -m 0700 -o branch:root /run/openrc/user/branch
+#
+# openrc-user prepares its per-user runtime directory before the runlevel runs.
+# It does that with uid 0 but in the *user's* domain, so it does not own the
+# directory it is chowning and the kernel asks for CAP_FOWNER - which staff_t did
+# not have. This is the login-time AVC:
+#
+#     denied { fowner } for comm="checkpath"
+#     scontext=staff_u:staff_r:staff_t:s0-s0:c0.c1023 tclass=capability
+allow staff_t self:capability fowner;
