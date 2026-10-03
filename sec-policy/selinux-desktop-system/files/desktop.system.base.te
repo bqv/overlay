@@ -1,6 +1,7 @@
 policy_module(desktop.system.base, 1.0)
 
 gen_require(`
+  type staff_bubblewrap_t;
   type systemd_sessions_runtime_t;
   type sysctl_modprobe_t;
   type initrc_exec_t;
@@ -573,3 +574,14 @@ allow unconfined_t initrc_exec_t:file entrypoint;
 # constraint, so the permission is written out - the same idiom as the var_lib_t
 # line above.
 allow staff_t user_runtime_t:dir watch;
+
+# --- r24: the 2026-10-03 enforcing boot, second pass ---
+#
+# supervise-daemon writing the user session's own state straight into /run;
+# udev reading the session's seat file; xauth's own dgram socket; and the DSH
+# sandbox reading a symlink out of ~/bin, which is how it execs a shell inside
+# the sandbox.
+allow staff_t var_run_t:dir write;
+allow udev_t systemd_sessions_runtime_t:file read;
+allow xauth_t self:unix_dgram_socket ioctl;
+allow staff_bubblewrap_t user_bin_t:lnk_file read;

@@ -184,3 +184,6 @@ allow pipewire_t session_dbusd_runtime_t:sock_file write;
 allow pipewire_t user_runtime_t:file write;
 allow pipewire_t user_runtime_t:sock_file setattr;
 allow wireplumber_t session_dbusd_runtime_t:sock_file { getattr write };
+
+# r24: the pulse pid file under the session runtime dir
+allow pipewire_t user_runtime_t:file getattr;

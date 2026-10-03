@@ -1136,3 +1136,51 @@ one permission is still missing and it will not show up in the audit log either.
 Deferred to after the enforcing reboot; the next step is to find it from the
 htop side (its own `getpidcon()` path and which field id the config actually
 enables) rather than from the log.
+
+## r24 - the 2026-10-03 enforcing boot
+
+The box came up enforcing for real. Three things were broken, and only one of
+them was the policy gap I expected.
+
+### The user session: `checkpath` was mislabelled
+
+`/usr/libexec/rc/bin/checkpath` was `tmpfiles_exec_t` while all 45 other helpers
+in that directory are `bin_t`. The refpolicy tmpfiles module labels that path, so
+**every** `checkpath` call by **any** init script silently transitions into the
+system tmpfiles domain - and under enforcing `staff_t` cannot even `lstat` it.
+The denial produces no AVC, so it is invisible to `ausearch`.
+
+`/etc/init.d/user`'s `start_pre` calls `checkpath` for `/run/openrc/user/$user`,
+so the session's state directory was never created, `rc-environ` had nowhere to
+write its environment, and the session's services did not come up - which is why
+dsh had to be started by hand. Fixed in the local db (`fcontexts.local`), and
+verified directly: running `checkpath` now creates `/run/openrc/user/branch`,
+which had never existed.
+
+### nginx: not SELinux this time
+
+`[emerg] bind() to 192.168.1.110:80 failed (99: Cannot assign requested
+address)`. dhcpcd started at 14:06:08 and nginx tried ten seconds later; dhcpcd's
+init script runs `-q` and forks before the lease arrives, and its `provide net`
+lives in the `nonetwork` runlevel, so nginx's weak `use net` orders it after
+dhcpcd *starting* rather than after the address existing. Fixed with
+`command_args="-q -w"` in `/etc/conf.d/dhcpcd` and a hard `rc_need="dhcpcd"` for
+nginx. Not a policy item.
+
+### The rest of the boot's denials
+
+Ten more, all now granted: supervise-daemon writing the session's state straight
+into /run, udev reading the seat file, xauth's own dgram socket, the DSH sandbox
+reading a symlink out of ~/bin (that is how it execs a shell inside the sandbox),
+mozilla's psi memory file (r21b had only its directory), gtk's config dir, the
+font-cache symlink and the compositor tmpfs map, crow opening its own config,
+and pipewire reading the pulse pid file.
+
+### htop: waived
+
+The `htop_t` domain is removed - module unloaded, binary back to `bin_t`. It
+could not have worked: htop runs inside `screen` and inherits `staff_screen_t`'s
+terminal fd, so the domain change broke `fd use` before any question about
+reading labels arose. The user will run htop as root instead, and the
+`sysadm_t domain:process getcap` grant that already exists for that is the
+sanctioned route.

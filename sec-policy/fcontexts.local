@@ -30,3 +30,19 @@
 /home/user/\.local/src(/.*)?    staff_u:object_r:user_home_t:s0
 /home/user/\.local/src(/.*)?/\.git(/.*)?    staff_u:object_r:git_home_t:s0
 /home/user/\.local/share/pnpm(/.*)?    staff_u:object_r:user_bin_t:s0
+
+# OpenRC's own checkpath. The refpolicy tmpfiles module labels this path
+# tmpfiles_exec_t, which makes every `checkpath` call by any init script
+# transition into the system tmpfiles domain - and, under enforcing, makes
+# staff_t unable to even stat it. /etc/init.d/user calls checkpath in
+# start_pre, so the user session's services could not be set up at all: the
+# service's own state dir under /run/openrc/user was never created.
+#
+# Every other one of the 45 helpers in that directory is bin_t, and the file is
+# built from openrc-0.64.1/src/checkpath - it is OpenRC's tool, not
+# systemd-tmpfiles'. tmpfiles_t may execute bin_t, so the relabel costs the
+# tmpfiles service nothing.
+#
+#   semanage fcontext -a -s system_u -t bin_t "/usr/libexec/rc/bin/checkpath"
+#
+/usr/libexec/rc/bin/checkpath    system_u:object_r:bin_t:s0
