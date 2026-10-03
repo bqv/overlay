@@ -46,3 +46,16 @@
 #   semanage fcontext -a -s system_u -t bin_t "/usr/libexec/rc/bin/checkpath"
 #
 /usr/libexec/rc/bin/checkpath    system_u:object_r:bin_t:s0
+
+# nginx's runtime directory. /run is a fresh tmpfs every boot and refpolicy's
+# rule for it is `/run/.*  <<None>>` plus per-path exceptions; /run/nginx has no
+# exception, so OpenRC's checkpath created it as initrc_runtime_t - a generic
+# init type nginx_t has no permission on at all - and did so again every boot.
+# That is why nginx kept failing to write its pid file even after the port was
+# free, and why the first two attempts to fix it (grants on initrc_runtime_t)
+# were treating the symptom: nginx_t already holds the *complete* permission set
+# for nginx_runtime_t, the type the directory should have had all along.
+#
+#   semanage fcontext -a -s system_u -t nginx_runtime_t "/run/nginx(/.*)?"
+#
+/run/nginx(/.*)?    system_u:object_r:nginx_runtime_t:s0

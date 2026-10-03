@@ -609,16 +609,13 @@ allow staff_t lastlog_t:file { read write };
 allow staff_t device_t:dir add_name;
 # r21b granted `read` on the modprobe sysctl; the session opens it as well
 allow staff_t sysctl_modprobe_t:file open;
-# nginx's run directory. checkpath creates /run/nginx as initrc_runtime_t -
-# refpolicy has no fcontext for the path - and nginx_t could not reach it at
-# all, so the master could not write its pid file and exited. `search` alone is
-# not enough: creating the file needs add_name and write on the directory, and
-# retiring it needs remove_name. The two that were actually missing were found
-# only by making nginx_t a permissive *type* (semanage permissive -a nginx_t),
-# which allows the operation and still logs it - this box has now produced four
-# denials that raise EACCES with no audit record at all, and guessing at them
-# costs a boot each time.
-allow nginx_t initrc_runtime_t:dir { search add_name remove_name write };
-allow nginx_t initrc_runtime_t:file { create getattr open read unlink write };
+# nginx's run directory is NOT granted here on purpose. Two rounds of grants on
+# initrc_runtime_t were the wrong layer entirely: the fault was that /run/nginx
+# carried no label of its own. /run is rebuilt every boot and refpolicy labels
+# its contents with `<<None>>` plus per-path rules, but there was no rule for
+# /run/nginx, so checkpath created it as initrc_runtime_t - a generic init type
+# nginx_t has no business touching - and it did so again on every boot. The fix
+# is one line of file context (see fcontexts.local): /run/nginx(/.*)? is
+# nginx_runtime_t, which the nginx module already grants in full.
 # udev opens the seat file it already reads
 allow udev_t systemd_sessions_runtime_t:file open;
