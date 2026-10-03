@@ -506,6 +506,14 @@ corecmd_exec_shell(staff_git_t)
 corenet_sendrecv_http_client_packets(staff_git_t)
 allow staff_git_t ssh_t:process2 { nnp_transition nosuid_transition };
 mmap_exec_files_pattern(staff_git_t, shell_exec_t, shell_exec_t)
+# ...and it executes git's hooks out of the *working tree*. Hooks under
+# .git/hooks are git_home_t and were already executable, but a repo that sets
+# core.hooksPath to a directory in the checkout (or any hook kept in the tree)
+# is user_home_t, and git's is_hook_executable() -> access(X_OK) probe failed
+# there with "hint: The 'dsh/hooks/pre-commit' hook was ignored because it's not
+# set as executable." The same probe passes from a shell because the shell is
+# staff_t, which may execute user_home_t - only the git domain could not.
+userdom_exec_user_home_content_files(staff_git_t)
 allow staff_git_t self:unix_dgram_socket { create ioctl };
 
 # the session's own admin tools: rc-service executing a script out of xdg_config,
