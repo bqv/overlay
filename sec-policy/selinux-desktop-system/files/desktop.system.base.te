@@ -1,6 +1,9 @@
 policy_module(desktop.system.base, 1.0)
 
 gen_require(`
+  type systemd_sessions_runtime_t;
+  type sysctl_modprobe_t;
+  type initrc_exec_t;
   type fonts_t;
   type xserver_tmpfs_t;
   type session_dbusd_runtime_t;
@@ -552,3 +555,13 @@ allow tmpfiles_t self:capability { dac_override dac_read_search sys_tty_config }
 # rtkit asking the audio servers for realtime scheduling
 allow rtkit_daemon_t pipewire_t:process setsched;
 allow rtkit_daemon_t wireplumber_t:process setsched;
+
+# r21b: the last few from the enforcing boot - nginx's cache getattr, udev looking
+# at session dirs, ssh reading xdg_config, the session reading the modprobe
+# sysctl, and the unconfined entrypoint for an init script.
+allow nginx_t httpd_cache_t:dir getattr;
+allow udev_t systemd_sessions_runtime_t:dir search;
+allow ssh_t xdg_config_t:dir search;
+allow staff_t sysctl_modprobe_t:file read;
+allow staff_t device_t:dir write;
+allow unconfined_t initrc_exec_t:file entrypoint;

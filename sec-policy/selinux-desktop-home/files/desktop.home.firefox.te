@@ -1,6 +1,12 @@
 policy_module(desktop.home.firefox, 1.0.0)
 
 gen_require(`
+  type proc_psi_t;
+  type sysctl_vm_overcommit_t;
+  type user_home_t;
+  type user_runtime_t;
+  type xdg_cache_t;
+  class file { create getattr ioctl lock map open read relabelfrom relabelto rename setattr unlink write };
   type var_lib_t;
   type xserver_t;
   type xserver_tmpfs_t;
@@ -38,3 +44,10 @@ xdg_watch_data_dirs(mozilla_t)
 allow mozilla_t var_lib_t:dir watch;
 allow mozilla_t xserver_t:unix_dgram_socket sendto;
 allow mozilla_t xserver_tmpfs_t:file write;
+
+# r21b: the browser's runtime dir, cache creates, psi and the overcommit sysctl.
+allow mozilla_t proc_psi_t:dir search;
+allow mozilla_t sysctl_vm_overcommit_t:file read;
+allow mozilla_t user_home_t:dir create;
+allow mozilla_t user_runtime_t:dir create;
+allow mozilla_t xdg_cache_t:file create;

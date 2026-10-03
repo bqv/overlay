@@ -1,6 +1,7 @@
 policy_module(desktop.home.pipewire, 1.0)
 
 gen_require(`
+  type user_runtime_t;
   type mozilla_t;
   type session_dbusd_runtime_t;
   class sock_file write;
@@ -177,3 +178,9 @@ allow pipewire_t self:process setrlimit;
 allow wireplumber_t self:process setrlimit;
 allow wireplumber_t mozilla_t:dir read;
 allow wireplumber_t session_dbusd_runtime_t:sock_file write;
+
+# r21b: the audio servers' runtime dir and the session dbus socket.
+allow pipewire_t session_dbusd_runtime_t:sock_file write;
+allow pipewire_t user_runtime_t:file write;
+allow pipewire_t user_runtime_t:sock_file setattr;
+allow wireplumber_t session_dbusd_runtime_t:sock_file { getattr write };

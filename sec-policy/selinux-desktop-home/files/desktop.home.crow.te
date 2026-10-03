@@ -1,6 +1,11 @@
 policy_module(desktop.home.crow, 1.0.0)
 
 gen_require(`
+  type session_dbusd_runtime_t;
+  type user_runtime_t;
+  type tmp_t;
+  type var_lib_t;
+  class sock_file { create getattr read setattr write };
   type xdg_config_t;
   type fonts_t;
   class udp_socket create;
@@ -129,3 +134,11 @@ crow_exec(staff_t);
 allow crow_t xdg_config_t:file { read write };
 allow crow_t fonts_t:dir getattr;
 allow crow_t self:udp_socket create;
+
+# r21b: crow's runtime dir and dbus socket, the font dir search, and a flatpak
+# icon cache it maps.
+allow crow_t fonts_t:dir search;
+allow crow_t user_runtime_t:dir write;
+allow crow_t session_dbusd_runtime_t:sock_file write;
+allow crow_t tmp_t:dir write;
+allow crow_t var_lib_t:file map;
