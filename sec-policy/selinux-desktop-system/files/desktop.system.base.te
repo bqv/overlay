@@ -13,6 +13,7 @@ gen_require(`
   type sysctl_modprobe_t;
   type initrc_exec_t;
   type rc_exec_t;
+  type kvm_device_t;
   type fonts_t;
   type xserver_tmpfs_t;
   type session_dbusd_runtime_t;
@@ -708,3 +709,14 @@ allow staff_t rc_exec_t:file { execute execute_no_trans getattr ioctl lock map o
 #     denied { fowner } for comm="checkpath"
 #     scontext=staff_u:staff_r:staff_t:s0-s0:c0.c1023 tclass=capability
 allow staff_t self:capability fowner;
+
+# Emulator / KVM
+#
+# /dev/kvm is kvm_device_t, mode 0666 root:kvm - so nothing but the policy was
+# in the way - and staff_t had no access to it at all (`sesearch -A -s staff_t -t
+# kvm_device_t` is empty). The session's Android emulator probed it on start, was
+# refused, fell back to software emulation and kept probing: 493 { read } denials
+# on kvm_device_t in the first 85 minutes after the r28 boot. refpolicy ships no
+# interface for kvm_device_t, so this is the raw grant, using the standard
+# chr_file read/write macro.
+allow staff_t kvm_device_t:chr_file rw_chr_file_perms;
