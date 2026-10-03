@@ -1,0 +1,32 @@
+# Local file contexts for this box - the shared /home/user design.
+#
+# These live in /etc/selinux/mcs/contexts/files/file_contexts.local (the local
+# db), NOT in a module .fc, and that is deliberate: libselinux consults
+# file_contexts.homedirs BEFORE file_contexts for paths under a home, so a
+# module-level rule for /home/user would be shadowed by the generated homedir
+# template. The local db is checked first and therefore wins.
+#
+# Design: branch, stem and leaf are three identities sharing one /home/user.
+#   - the home DIRECTORY belongs to the admin identity (stem -> sysadm_u). Only the
+#     directory: a broad /home/user(/.*)? rule would flatten every type-specific path
+#     under it (~/.cache -> user_home_t instead of xdg_cache_t, ~/.local/bin ->
+#     user_home_t instead of user_bin_t), which is not what was asked for.
+#   - the source trees are worked in by staff_u (the session and the agent),
+#     so they stay staff_u and get the home_t types back rather than being
+#     swept into xdg_data_t by the default /home/user(/.*)? rule
+#   - pnpm keeps its own tool binaries under ~/.local/share, which the default
+#     labelling makes non-executable (that broke pnpm under enforcing)
+#
+# Reapply with these commands (or copy the contexts list and run
+# sefcontext_compile + a policy reload):
+#
+#   semanage fcontext -a -s sysadm_u -t user_home_dir_t "/home/user"
+#   semanage fcontext -a -s sysadm_u -t user_home_t     "/home/user(/.*)?"
+#   semanage fcontext -a -s staff_u  -t user_home_t     "/home/user/\.local/src(/.*)?"
+#   semanage fcontext -a -s staff_u  -t git_home_t      "/home/user/\.local/src(/.*)?/\.git(/.*)?"
+#   semanage fcontext -a -s staff_u  -t user_bin_t      "/home/user/\.local/share/pnpm(/.*)?"
+#
+/home/user    sysadm_u:object_r:user_home_dir_t:s0
+/home/user/\.local/src(/.*)?    staff_u:object_r:user_home_t:s0
+/home/user/\.local/src(/.*)?/\.git(/.*)?    staff_u:object_r:git_home_t:s0
+/home/user/\.local/share/pnpm(/.*)?    staff_u:object_r:user_bin_t:s0

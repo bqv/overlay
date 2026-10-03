@@ -985,3 +985,66 @@ in those classes:
 So no change was needed: the browser's audio and accelerated video are already
 permitted, with the actual devices (`/dev/dri/renderD128`, `/dev/snd/controlC0`)
 labelled `dri_device_t` and `sound_device_t` as the policy expects.
+
+## Round 22 - the shared /home/user, and what the blanket relabel did
+
+### The design, now recorded
+
+`branch`, `stem` and `leaf` are three identities sharing one `/home/user`, each
+with its own SELinux role/user. That makes the *user component* of those files a
+design decision, not housekeeping - and a relabel that forces one identity across
+the tree is a change that should not happen.
+
+### What the broad relabel did, and the correction
+
+r21's `restorecon -RF /` applied the policy's **defaults**: it flattened the whole
+home into `user_home_t` (375,425 changes), sweeping up every type-specific path -
+`~/.cache` lost `xdg_cache_t`, `~/.local/bin` lost `user_bin_t`. I mis-described
+that earlier as "user-component fixes"; the dominant effect was the *types*.
+
+The corrected rules, now in the local db and recorded in `fcontexts.local`:
+
+    /home/user                                  sysadm_u:user_home_dir_t
+    /home/user/\.local/src(/.*)?                 staff_u:user_home_t
+    /home/user/\.local/src(/.*)?/\.git(/.*)?      staff_u:git_home_t
+    /home/user/\.local/share/pnpm(/.*)?          staff_u:user_bin_t
+
+Note what is **not** there: a broad `/home/user(/.*)?`. My first version had one,
+and it flattened the type-specific paths - the local db is consulted *first*, so
+its rules beat both the homedir template and the xdg/mozilla modules. The home
+*directory* is `sysadm_u`; the tree keeps the types it should have. The corrected
+pass (692,902 changes) restored `mozilla_xdg_cache_t` (18,067), `xdg_config_t` and
+`mozilla_home_t` (4,443/2,325), `xdg_cache_t` and `android_home_t`, while keeping
+`src` on the home_t's and pnpm executable.
+
+**Why the local db and not a module `.fc`**: libselinux consults
+`file_contexts.homedirs` *before* `file_contexts` for paths under a home, so a
+module-level rule for `/home/user` would be shadowed by the generated template.
+The local db is checked first and is the only layer that can override it. It is
+not part of the module store, which is why the rules are recorded in the repo with
+their `semanage` commands.
+
+### Two things checked rather than assumed
+
+- **`setfiles_t` already holds `can_change_object_identity`.** The relabel runs as
+  `staff_u:sysadm_r:setfiles_t` (the exec transition, even through sudo), and the
+  UBAC constraint therefore passes for cross-user relabels. No grant was needed,
+  and my earlier worry that "every relabel would be denied under enforcing" was
+  wrong.
+- **htop is not being blocked.** Reading `/proc/<pid>/attr/current` - the call
+  `getpidcon()` makes - succeeds both unprivileged and as root, the file is mode
+  666, and **zero** AVCs are produced. `staff_t` already holds
+  `domain_read_all_domains_state`. Whatever was missing in htop's security column,
+  it was not SELinux, and nothing needs granting. (If htop is run inside a
+  sandbox - flatpak/bwrap - then the sandbox's own domain is the one that would
+  need it.)
+
+### The detached processes
+
+Background `sudo` commands outlive the shell that started them: when a tool call
+ends or times out, the root child is reparented to init and no longer appears in
+DSH's job tracking. That is the harness's process model, not a DSH bug - but it is
+my mess to avoid, because it is how several restorecons ended up running
+concurrently over the same trees. The UI's job list being empty is a *separate*
+problem: the `workspace`/`session-controller` services are still `pending` from
+the startup `scandir` failure, which a `dsh restart` clears.
