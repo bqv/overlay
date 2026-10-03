@@ -1684,3 +1684,31 @@ Incidentally, that experiment also surfaced two upstream-dontaudited and benign
 classes that are otherwise invisible: Firefox's RenderThread { execheap } (a JIT
 probing for an executable heap, normal to deny) and qsearch { read } on a
 portage_conf_t symlink (a portage query tool, the usual confined read).
+
+### desktop.system.base.te: grouped by consumer (2026-10-03)
+
+The module had grown to 724 lines of rules appended round by round (r15 ... r28), so
+"what does staff_t have?" meant grepping 31 scattered lines, and the file read as a
+journal rather than a reference. It is now grouped by the domain that consumes each
+rule, with a topic map at the top and eleven sections - staff_t, the per-role staff
+domains, sysadm_t, the user session and its runlevel, session services, local
+services, network, portage/policy maintenance, admin tools, boot/kernel, other. Every
+rule kept the note that explains it and the round label it came from; the
+round-by-round investigation lives here, not in the module.
+
+Two comment blocks moved out of the module into this file, because they are
+provenance rather than policy:
+
+* the r20b banner - desktop.system.cil was a second source of the same policy, with
+  its own require list, and it is how the dhcpc_t blanket survived being "removed"
+  from the .te in r18: the .cil still carried a copy. Its 36 rules are now grouped by
+  consumer along with everything else.
+* the NOTE that the deleted audit.te draft also carried sysadm_sudo_t rules
+  (chkpwd_t, sysadm_t, proc_t:filesystem). sysadm_sudo_t is not a type in this policy
+  - checkmodule fails with 'unknown type' - so those rules are not recoverable. The
+  rest of the draft is present in the module as dontaudit.
+
+Proven semantics-free, not asserted: 378 rule/macro lines before and after with none
+lost or gained, and the whole-policy capability set - `sesearch -A` normalised per
+(subject, object, class, condition) by ~/bin/selinux-allow-set - identical across the
+merge. Related tooling: that prover, and ~/bin/selinux-permissive-audit.
