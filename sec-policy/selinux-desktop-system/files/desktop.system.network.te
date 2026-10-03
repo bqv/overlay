@@ -87,6 +87,14 @@ allow staff_bubblewrap_t mdns_packet_t:packet { send recv };
 allow staff_t mdns_packet_t:packet { send recv };
 allow stremio_server_t mdns_packet_t:packet { send recv };
 
+# mozilla_t added on request. Firefox is the one plausible LAN-discovery client
+# that had been left out of this list, and unlike staff_t / stremio_server_t /
+# sysadm_t it has no capture behind it - no mdns_packet_t denial has ever been
+# recorded from mozilla_t - so this is a completeness grant, not a triaged one.
+# Firefox does answer the WebRTC host-candidate mDNS queries other LAN devices
+# send it, and that is the same type.
+allow mozilla_t mdns_packet_t:packet { send recv };
+
 ###
 ### stremio's streaming server - TCP 11471
 ###
