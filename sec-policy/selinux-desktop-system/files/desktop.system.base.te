@@ -1,6 +1,9 @@
 policy_module(desktop.system.base, 1.0)
 
 gen_require(`
+  type fonts_t;
+  type xserver_tmpfs_t;
+  type session_dbusd_runtime_t;
   attribute domain;
   attribute can_change_object_identity;
   type initrc_state_t;
@@ -40,6 +43,9 @@ gen_require(`
   type dmesg_t;
   type mount_t;
   type tmpfiles_t;
+  type var_lib_t;
+  type pipewire_t;
+  type xserver_t;
   type udev_t;
   type fsadm_t;
   class filesystem getattr;
@@ -54,7 +60,7 @@ gen_require(`
   class lnk_file { create getattr read unlink };
   class file { create getattr map open read unlink write relabelfrom relabelto };
   class dir { create getattr open read search relabelfrom relabelto };
-  class capability { dac_override dac_read_search net_admin sys_ptrace };
+  class capability { dac_override dac_read_search net_admin sys_admin sys_ptrace sys_tty_config };
   type auditd_log_t;
   type auditd_t;
   type dri_device_t;
@@ -523,3 +529,26 @@ allow staff_t sysadm_t:process signull;
 # the socket census again: two classes it walks that r18/r19 did not name
 allow ss_t wireplumber_t:netlink_kobject_uevent_socket getattr;
 allow ss_t dhcpc_t:udp_socket getattr;
+
+# --- r21: the enforcing boot's findings (system side) ---
+#
+# The user OpenRC session. staff_t (running as root for the user session) creates
+# its state under /run/openrc, which is initrc_state_t - the create was denied and
+# THE USER SESSION DID NOT START. refpolicy has read interfaces for that tree but
+# none for writing it, so this is raw.
+allow staff_t initrc_state_t:dir { write add_name remove_name };
+allow staff_t initrc_state_t:file { create getattr open read unlink write };
+# xdg-desktop-portal watching the flatpak export share (335 denials at boot).
+# files_watch_all_dirs would grant this on every directory; this is narrow.
+allow staff_t var_lib_t:dir watch;
+# executing a user-installed binary out of ~/.local/share
+allow staff_t xdg_data_t:file execute;
+# nvidia-modprobe wants CAP_SYS_ADMIN to create the /dev/nvidia* nodes. Broad
+# capability, but SELinux still type-checks every privileged operation it enables;
+# udev creates the nodes at boot regardless, so this only helps the fallback path.
+allow staff_t self:capability sys_admin;
+# systemd-tmpfiles checkpath at boot
+allow tmpfiles_t self:capability { dac_override dac_read_search sys_tty_config };
+# rtkit asking the audio servers for realtime scheduling
+allow rtkit_daemon_t pipewire_t:process setsched;
+allow rtkit_daemon_t wireplumber_t:process setsched;

@@ -150,3 +150,8 @@ xdg_search_data_dirs(stremio_server_t)
 xserver_read_state(stremio_server_t)
 xserver_read_xdm_state(stremio_server_t)
 xserver_use_xdm_fds(stremio_server_t)
+
+# r21: stremio checking its own capabilities and using io_uring (allowed is in the
+# policy class table; getattr is not - see the io_uring note in TRIAGE).
+allow stremio_server_t self:process getcap;
+allow stremio_server_t self:io_uring allowed;

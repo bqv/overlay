@@ -1,6 +1,9 @@
 policy_module(desktop.home.crow, 1.0.0)
 
 gen_require(`
+  type xdg_config_t;
+  type fonts_t;
+  class udp_socket create;
 	role staff_r;
 	type staff_t;
 	type xdg_config_t;
@@ -121,3 +124,8 @@ crow_domtrans(staff_t, staff_r);
 crow_exec(staff_t);
 
 #============= crow_t ==============
+
+# r21: crow's own config, the font cache it reads, and its udp socket.
+allow crow_t xdg_config_t:file { read write };
+allow crow_t fonts_t:dir getattr;
+allow crow_t self:udp_socket create;

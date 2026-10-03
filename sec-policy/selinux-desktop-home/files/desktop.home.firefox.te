@@ -1,6 +1,10 @@
 policy_module(desktop.home.firefox, 1.0.0)
 
 gen_require(`
+  type var_lib_t;
+  type xserver_t;
+  type xserver_tmpfs_t;
+  class unix_dgram_socket sendto;
 	role staff_r;
 	type staff_t;
 	type mozilla_t;
@@ -28,3 +32,9 @@ fs_read_cgroup_symlinks(mozilla_t)
 pipewire_play(mozilla_t)
 xdg_watch_config_dirs(mozilla_t)
 xdg_watch_data_dirs(mozilla_t)
+
+# r21: the browser watching the flatpak export share, talking to the X server's
+# dgram socket and writing its compositor tmpfs.
+allow mozilla_t var_lib_t:dir watch;
+allow mozilla_t xserver_t:unix_dgram_socket sendto;
+allow mozilla_t xserver_tmpfs_t:file write;
