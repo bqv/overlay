@@ -19,32 +19,17 @@ gen_require(`
 
 # The admin tools a session runs: ss (the socket census), nft, the audit log.
 #
-# `ss -tulpn` walks /proc to map sockets to processes, which is the same access
-# htop needed. Where refpolicy has an interface for that walk it is used; the
-# socket getattrs have no interface and are written out as raw allows, because
-# getattr is read-only metadata.
-
+# `ss -tulpn` walks /proc to map sockets to processes. Where refpolicy has an interface
+# it is used; the socket getattrs have none and are raw allows (read-only metadata). See TRIAGE.md.
 
 # --- r18: ss, the socket census ---
-#
-# `ss -tulpn` walks /proc/<pid> to map sockets back to the processes that hold
-# them, which is the same access htop/nvtop needed - 17k denials in the retained
-# logs, the single largest source of AVC noise in the triage windows, and `ss` is
-# a normal admin tool rather than something unusual. Same treatment as staff_t:
-# the refpolicy interface for the /proc walk, plus raw allows for the socket
-# getattrs, because refpolicy has no interface for those (domain_getattr_all_
-# domains covers only the process class) and getattr is read-only metadata.
+# `ss -tulpn`'s /proc walk (17k denials, the largest AVC source) plus raw socket getattrs, which have no interface.
 domain_read_all_domains_state(ss_t)
 allow ss_t domain:{ tcp_socket udp_socket unix_stream_socket unix_dgram_socket } getattr;
 allow ss_t domain:{ netlink_route_socket netlink_kobject_uevent_socket netlink_selinux_socket netlink_generic_socket } getattr;
 
 # --- r18b: what the census and netfilter tools still needed ---
-#
-# domain_read_all_domains_state is dir-only (kernel_search_proc + domain:dir
-# list perms), so `ss -p` still needed the companion interface for the process
-# class - 113 denials in one window. The rest is what a root-run census needs:
-# CAP_SYS_PTRACE to read other processes' /proc entries, the remaining socket
-# classes (rawip/packet/netlink_audit), and dac_read_search.
+# domain_read_all_domains_state is dir-only, so `ss -p` also needed the process-class companion (113 denials), CAP_SYS_PTRACE, the remaining socket classes and dac_read_search.
 domain_getattr_all_domains(ss_t)
 allow ss_t self:capability { dac_read_search sys_ptrace };
 allow ss_t self:cap_userns sys_ptrace;

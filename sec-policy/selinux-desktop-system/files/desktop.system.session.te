@@ -43,33 +43,23 @@ gen_require(`
 
 # The user OpenRC session: PAM, pam_openrc, the runlevel engine and its state.
 #
-# This is the arc from r21 to r28 - /run/openrc state, the supervise control
-# channel, executing the runlevel engine at all - plus the session services that
-# the login pulls in (logind, the system and session buses, PolicyKit, X
+# The arc r21 to r28 - /run/openrc state, the supervise control channel, executing the
+# runlevel engine - plus the login's session services (logind, the buses, PolicyKit, X
 # authority, utempter, rtkit) and chkpwd, the PAM helper.
 #
-# The method that found the r28 denial is worth keeping: an EACCES with NO AVC
-# anywhere, visible only by executing the binary as the session domain
-# (sudo -r staff_r -t staff_t). See ../TRIAGE.md.
-
+# Method and evidence: ../../TRIAGE.md.
 
 # sesh: the session helper talks to the user's session sockets.
 allow sysadm_t staff_t:unix_stream_socket { read write };
 
 # --- r21: the enforcing boot's findings (system side) ---
-#
-# The user OpenRC session. staff_t (running as root for the user session) creates
-# its state under /run/openrc, which is initrc_state_t - the create was denied and
-# THE USER SESSION DID NOT START. refpolicy has read interfaces for that tree but
-# none for writing it, so this is raw.
-# xdg-desktop-portal watching the flatpak export share (335 denials at boot).
-# files_watch_all_dirs would grant this on every directory; this is narrow.
+# xdg-desktop-portal watching the flatpak export share, 335 denials at boot;
+# files_watch_all_dirs would cover every directory, so this stays narrow.
 allow staff_t var_lib_t:dir watch;
 # executing a user-installed binary out of ~/.local/share
 allow staff_t xdg_data_t:file execute;
-# nvidia-modprobe wants CAP_SYS_ADMIN to create the /dev/nvidia* nodes. Broad
-# capability, but SELinux still type-checks every privileged operation it enables;
-# udev creates the nodes at boot regardless, so this only helps the fallback path.
+# nvidia-modprobe's /dev/nvidia* fallback: broad capability, but SELinux still
+# type-checks every operation it enables, and udev creates the nodes at boot regardless.
 allow staff_t self:capability sys_admin;
 # systemd-tmpfiles checkpath at boot
 allow tmpfiles_t self:capability { dac_override dac_read_search sys_tty_config };
@@ -78,31 +68,17 @@ allow rtkit_daemon_t pipewire_t:process setsched;
 allow rtkit_daemon_t wireplumber_t:process setsched;
 
 # --- r23: the last live finding from the enforcing boot (system side) ---
-#
-# GLib's file monitors watch /run/user/1000, which is user_runtime_t. refpolicy
-# has no watch interface for that type, and `watch` is not under the UBAC
-# constraint, so the permission is written out - the same idiom as the var_lib_t
-# line above.
+# GLib's monitors watch /run/user/1000 (user_runtime_t); refpolicy has no watch interface for it.
 allow staff_t user_runtime_t:dir watch;
 
 # --- r24: the 2026-10-03 enforcing boot, second pass ---
-#
-# supervise-daemon writing the user session's own state straight into /run;
-# udev reading the session's seat file; xauth's own dgram socket; and the DSH
-# sandbox reading a symlink out of ~/bin, which is how it execs a shell inside
-# the sandbox.
+# supervise-daemon writing session state into /run, udev reading the seat file, xauth's dgram socket, the DSH sandbox's ~/bin symlink.
 allow xauth_t self:unix_dgram_socket ioctl;
 allow staff_bubblewrap_t user_bin_t:lnk_file read;
 
 # --- r25: the 2026-10-03 enforcing boot, third pass (the 14:31 boot) ---
-#
-# The user session's own supervise control channel. r21 granted the directory
-# and file permissions on initrc_state_t but never the fifo the session
-# actually talks through: 844 `read` denials on
-# /run/openrc/supervise-user.branch.ctl, plus the unlink that retires it, the
-# rmdir/relabelfrom/setattr on the tree above it, and the pid file in /run.
-# That, not checkpath, is why the session's services still did not come up on
-# this boot.
+# the supervise control fifo: 844 `read` denials on /run/openrc/supervise-user.branch.ctl;
+# without it the session's services did not come up.
 allow staff_t initrc_state_t:dir { write add_name remove_name rmdir relabelfrom setattr };
 allow staff_t initrc_state_t:file { create getattr open read unlink write };
 allow staff_t initrc_state_t:fifo_file { getattr ioctl open read unlink write };
@@ -114,81 +90,34 @@ allow staff_t lastlog_t:file { getattr lock open read write };
 allow staff_t device_t:dir add_name;
 # r21b granted `read` on the modprobe sysctl; the session opens it as well
 allow staff_t sysctl_modprobe_t:file open;
-# nginx's run directory is NOT granted here on purpose. Two rounds of grants on
-# initrc_runtime_t were the wrong layer entirely: the fault was that /run/nginx
-# carried no label of its own. /run is rebuilt every boot and refpolicy labels
-# its contents with `<<None>>` plus per-path rules, but there was no rule for
-# /run/nginx, so checkpath created it as initrc_runtime_t - a generic init type
-# nginx_t has no business touching - and it did so again on every boot. The fix
-# is one line of file context (see fcontexts.local): /run/nginx(/.*)? is
-# nginx_runtime_t, which the nginx module already grants in full.
+# nginx's run directory is NOT granted here on purpose: the fault was that /run/nginx
+# carried no label of its own, fixed by one file-context line (nginx_runtime_t). See TRIAGE.md.
 # udev opens the seat file it already reads
 allow udev_t systemd_sessions_runtime_t:file { getattr open read };
 
 # --- r26: the 16:04 boot, the one where the session got as far as PAM ---
-#
-# The session's own state, again: checkpath wanted to relabel /run/openrc/user
-# (left denied on purpose - the context is already right, and relabelfrom across
-# SELinux users is exactly what the UBAC constraint exists to stop, so granting
-# can_change_object_identity to staff_t to silence it would be a bad trade).
-# These are the ones that are genuinely needed: the init chowning the session
-# dir to the user, opening lastlog to record the login, and unlinking the
-# supervise pid file when the session is retired.
+# checkpath's relabelfrom on /run/openrc/user is left denied on purpose: the context is
+# already right, cross-user relabel is what UBAC stops, and can_change_object_identity
+# for staff_t would be a bad trade. What is needed is retiring the supervise pid file.
 allow staff_t var_run_t:file unlink;
 
-# ---- r28: the session domain could not execute `openrc --user` --------------
-#
-# r25 gave the session everything openrc-user's own checkpath needs, so the
-# *setup* half of the user session works. The launch half did not, and that is
-# what kept dsh, llama, adb, emulator and protonmail down on every boot:
-#
-#     /usr/libexec/rc/sh/openrc-user.sh:
-#         exec openrc --user boot || exit 1
-#
-# /sbin/openrc is rc_exec_t. Upstream grants that entry point to sysadm_t and to
-# the sudo/run_init/tmpfiles categories, but NOT to staff_t, so a confined staff
-# session could not execute the runlevel engine at all. The shell died on that
-# line, and because the default runlevel is only reached *after* `boot` returns,
-# the whole user runlevel was skipped - with an empty failed/ directory, because
-# OpenRC never got far enough to fail a service.
-#
-# Reproduced as pam_openrc actually spawns openrc-user: root uid in the session's
-# own context. That identity is the whole trick, and it is why this hid for so
-# long - sudo on its own lands in sysadm_t, where rc_exec_t is allowed and the
-# bug is invisible:
-#
-#     sudo -r staff_r -t staff_t id -Z        # staff_u:staff_r:staff_t:s0-s0:c0.c1023
-#     sudo -r staff_r -t staff_t /sbin/openrc --user boot
-#       -> /sbin/openrc: Permission denied    (rc 126)
-#
-# Method worth remembering: that EACCES carried NO AVC, in dmesg or in
-# /var/log/audit/audit.log, and staff_t has no dontaudit rules that could hide
-# one - the same silent-denial class TRIAGE.md records for the binhost failure.
-# Grepping the audit log finds nothing; exec'ing the binary as the session domain
-# finds it immediately.
+# --- r28: staff_t could not execute /sbin/openrc (rc_exec_t, upstream grant missing):
+# the runlevel engine died with EACCES (rc 126, no AVC) and the whole user runlevel was skipped.
 allow staff_t rc_exec_t:file { execute execute_no_trans getattr ioctl lock map open read };
 
 # checkpath -d -m 0700 -o branch:root /run/openrc/user/branch
-#
-# openrc-user prepares its per-user runtime directory before the runlevel runs.
-# It does that with uid 0 but in the *user's* domain, so it does not own the
-# directory it is chowning and the kernel asks for CAP_FOWNER - which staff_t did
-# not have. This is the login-time AVC:
-#
-#     denied { fowner } for comm="checkpath"
-#     scontext=staff_u:staff_r:staff_t:s0-s0:c0.c1023 tclass=capability
+# uid 0 in the *user's* domain, so the chown needs CAP_FOWNER; the login-time fowner AVC.
 allow staff_t self:capability fowner;
 
-# Emulator / KVM
-#
-# /dev/kvm is kvm_device_t, mode 0666 root:kvm - so nothing but the policy was
-# in the way - and staff_t had no access to it at all (`sesearch -A -s staff_t -t
-# kvm_device_t` is empty). The session's Android emulator probed it on start, was
-# refused, fell back to software emulation and kept probing: 493 { read } denials
-# on kvm_device_t in the first 85 minutes after the r28 boot. refpolicy ships no
-# interface for kvm_device_t, so this is the raw grant, using the standard
-# chr_file read/write macro.
+# Emulator/KVM: /dev/kvm is kvm_device_t at 0666 and staff_t was denied entirely - the
+# emulator probed it 493 times in 85 min. refpolicy has no interface, so raw rw_chr_file_perms.
 allow staff_t kvm_device_t:chr_file rw_chr_file_perms;
+
+# Emulator/SwiftShader: its render thread's JIT mprotects a heap page to R+X, which
+# SELinux calls execheap. staff_t holds execmem unconditionally but not this, so the
+# page never became executable and qemu's RenderThread took SIGSEGV 0-10 ms later:
+# 186 deaths, 186 execheap AVCs, 183 ANOM_ABEND sig=11, same pid, 1:1 (TRIAGE 2026-10-03).
+allow staff_t self:process execheap;
 
 selinux_getattr_fs(policykit_t)
 seutil_search_default_contexts(policykit_t)

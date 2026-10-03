@@ -21,10 +21,10 @@ gen_require(`
 
 # Remote access to this box: sshd, and the ssh client.
 #
-# sshd is the lockout-critical service, so its rules are here in one place rather
-# than spread through a journal: what it may do to /run/openrc state, the pty and
-# shadow accesses it needs, and the signal it sends into the session.
-
+# sshd is the lockout-critical service, so its rules are one place: /run/openrc state,
+# the pty and shadow accesses, and the signal it sends into the session.
+#
+# Method and evidence: ../../TRIAGE.md.
 
 # r21b: ssh reads xdg_config.
 allow ssh_t xdg_config_t:dir search;
@@ -41,20 +41,13 @@ auth_tunable_read_shadow(sshd_t)
 kernel_getattr_proc(sshd_t)
 libs_exec_lib_files(sshd_t)
 
-# sshd is how this box is reached remotely, so these two are lockout-relevant
-# even though there are only two denials each in the whole log: sshd reading
-# openrc's script state, and a file under /run.
+# sshd is how this box is reached remotely, so these two are lockout-relevant even though
+# there are only two denials each in the whole log. See TRIAGE.md.
 init_read_script_status_files(sshd_t)
 read_files_pattern(sshd_t, var_run_t, var_run_t)
 
 # --- r15: coverage sweep - what is left in the enforcing domains ---
-#
-# A two-hour capture filtered to the *enforcing* domains only (the seven
-# permissive domains and my own census tooling excluded as self-inflicted)
-# leaves just these. Everything else the box produced was already handled.
-# ssh allocates a pty for the session. sshd's side was already granted; this is
-# the client, and ssh is how the box is reached remotely - so it matters even
-# at four denials.
+# ssh allocates a pty (sshd's side already granted); four denials, but ssh is how the box is reached.
 term_use_ptmx(ssh_t)
 # ssh inherited a cwd on the tmpfs mount (~/tmp) and searched it. ssh_t is not
 # permissive, so an ssh started from there is denied without this.

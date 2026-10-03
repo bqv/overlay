@@ -1712,3 +1712,301 @@ Proven semantics-free, not asserted: 378 rule/macro lines before and after with 
 lost or gained, and the whole-policy capability set - `sesearch -A` normalised per
 (subject, object, class, condition) by ~/bin/selinux-allow-set - identical across the
 merge. Related tooling: that prover, and ~/bin/selinux-permissive-audit.
+
+# Module commentary, condensed - addendum (2026-10-03)
+
+Second pass over the split policy modules: one file per consumer, each module's inline
+commentary reduced to a round label plus one line per rule. This section holds the narrative
+taken out of the modules - denial counts, the identity each was reproduced in, the mechanism,
+and the alternatives rejected. Rule lines are untouched; the round labels in the modules index
+into this file and TRIAGE.md.
+
+## desktop.system.staff.te - the session user and its per-role domains
+
+- **r16c** - `/usr/src` is `src_t`; refpolicy's `files_search_src()` grants the directory but
+  not the files under it, and a developer greps the kernel tree, so the read is raw. Same for
+  `portage_db_t` (qlist/eselect-style queries).
+- **Not granted, smartctl.** refpolicy carries
+  `neverallow storage_typeattr_1 fixed_disk_device_t (blk_file (read))` - a deliberate
+  property, because reading the block device side-steps the filesystem and its permissions.
+  The neverallow check refused the whole module until the line was removed, which is the check
+  doing its job (the same mechanism as the `shadow_t` neverallow that was the model case for
+  this work). Under enforcing `smartctl` on the raw disk is denied; that is intended, and the
+  supported route would be a storage domain rather than widening `staff_t`.
+- **staff_git_t** is refpolicy's per-role git domain (declared inside an optional block in the
+  staff module). It gets git's own access - `git_exec_t`, `git_home_t` - but nothing for the
+  user's `~/bin`, so git cannot work in a repo there, and it was still in the permissive list.
+  Reproduced with a read-only `git status` in `~/bin/<repo>`: ~40 denials against `user_bin_t`
+  plus `/dev/ptmx`.
+- **mmap on `user_bin_t`** - git mmaps its index, and no interface grants map on `user_bin_t`
+  specifically: `userdom_map_user_home_content_files` covers `user_home_t` only, and the
+  `map_all` variant would grant map on every home content type. One precise allow.
+- **The overlay tree** (`/var/db/repos`, labelled `portage_ebuild_t`) - the user's git wrapper
+  reads and searches it, and a tmux session with a cwd there searches it. refpolicy only
+  expects portage tools in that tree. Reading it as the session user (editing policy files,
+  inspecting ebuilds) needs the same access, or the policy cannot be maintained as `staff_t`
+  under enforcing.
+- **Lockout-risk scan** - denials whose *subject* is a critical service. `staff_sudo_t` only
+  ever trips the inherited-fd class (`noatsecure rlimitinh siginh`), for which the transition
+  is not blocked and nothing fails, so `dontaudit` is the right treatment rather than a grant;
+  plus a statfs on `/proc`.
+- **r16 - git off the permissive list.** The remaining denials: searching `user_tmpfs_t`,
+  talking to a socket the session owns (the agent/wrapper socket), the
+  `/proc/sys/vm/overcommit_memory` mmap heuristic, and running shell scripts (hooks/pagers)
+  without a transition.
+- **git hooks out of the working tree.** Hooks under `.git/hooks` are `git_home_t` and were
+  already executable, but a repo that sets `core.hooksPath` into the checkout (or any hook
+  kept in the tree) has them as `user_home_t`, where git's `is_hook_executable()` ->
+  `access(X_OK)` probe failed with
+  `hint: The 'dsh/hooks/pre-commit' hook was ignored because it's not set as executable.` The
+  same probe passes from a shell because the shell is `staff_t`, which may execute
+  `user_home_t` - only the git domain could not.
+- **r21b** - the session opens the modprobe sysctl, and writes into a device directory.
+
+## desktop.system.session.te - the user OpenRC session
+
+- **r21 (system side)** - `staff_t` (running as root for the user session) creates its state
+  under `/run/openrc`, which is `initrc_state_t`; the create was denied and the user session
+  did not start. refpolicy has read interfaces for that tree but none for writing it, so the
+  rule is raw. `xdg-desktop-portal` watching the flatpak export share was 335 denials at boot;
+  `files_watch_all_dirs` would grant that on every directory, so the rule is narrow.
+  `sys_admin` for `nvidia-modprobe` creating `/dev/nvidia*` is broad, but SELinux still
+  type-checks every privileged operation it enables and udev creates the nodes at boot
+  regardless, so it only helps the fallback path.
+- **r23** - GLib's file monitors watch `/run/user/1000` (`user_runtime_t`); refpolicy has no
+  watch interface for that type, and `watch` is not under the UBAC constraint, so the
+  permission is written out - the same idiom as the r21 `var_lib_t` watch.
+- **r24** - supervise-daemon writing the user session's own state straight into `/run`; udev
+  reading the session's seat file; xauth's own dgram socket; and the DSH sandbox reading a
+  symlink out of `~/bin`, which is how it execs a shell inside the sandbox.
+- **r25 - the supervise control channel.** r21 granted the directory and file permissions on
+  `initrc_state_t` but never the fifo the session actually talks through: 844 `read` denials on
+  `/run/openrc/supervise-user.branch.ctl`, plus the unlink that retires it, the
+  rmdir/relabelfrom/setattr on the tree above it, and the pid file in `/run`. That, not
+  checkpath, is why the session's services still did not come up on this boot. Also here: the
+  session init dropping to the user and the login record it keeps.
+- **nginx's run directory, NOT granted.** Two rounds of grants on `initrc_runtime_t` were the
+  wrong layer entirely: the fault was that `/run/nginx` carried no label of its own. `/run` is
+  rebuilt every boot and refpolicy labels its contents with `<<None>>` plus per-path rules, but
+  there was no rule for `/run/nginx`, so checkpath created it as `initrc_runtime_t` - a generic
+  init type `nginx_t` has no business touching - and did so again on every boot. The fix is one
+  line of file context (`fcontexts.local`): `/run/nginx(/.*)?` is `nginx_runtime_t`, which the
+  nginx module already grants in full.
+- **r26 - checkpath and UBAC.** checkpath wanted to relabel `/run/openrc/user`; left denied on
+  purpose - the context is already right, and `relabelfrom` across SELinux users is exactly
+  what the UBAC constraint exists to stop, so granting `can_change_object_identity` to
+  `staff_t` to silence it would be a bad trade. What was genuinely needed from that boot: the
+  init chowning the session dir to the user, opening lastlog to record the login, and unlinking
+  the supervise pid file when the session is retired.
+- **r28 - why the user session never started.** The launcher
+  `/usr/libexec/rc/sh/openrc-user.sh` runs `exec openrc --user boot || exit 1`. `/sbin/openrc`
+  is `rc_exec_t`; upstream grants that entry point to `sysadm_t` and to the
+  sudo/run_init/tmpfiles categories but NOT to `staff_t`, so a confined staff session could not
+  execute the runlevel engine at all. The shell died on that line, and because the default
+  runlevel is only reached *after* `boot` returns, the whole user runlevel was skipped - with an
+  empty `failed/` directory, because OpenRC never got far enough to fail a service.
+  Reproduced as pam_openrc actually spawns it: root uid in the session's own context. That
+  identity is the whole trick, and why it hid for so long - `sudo` on its own lands in
+  `sysadm_t`, where `rc_exec_t` is allowed and the bug is invisible:
+
+      sudo -r staff_r -t staff_t id -Z        # staff_u:staff_r:staff_t:s0-s0:c0.c1023
+      sudo -r staff_r -t staff_t /sbin/openrc --user boot
+        -> /sbin/openrc: Permission denied    (rc 126)
+
+  The EACCES carried NO AVC, in dmesg or in `/var/log/audit/audit.log`, and `staff_t` has no
+  dontaudit rules that could hide one - the same silent-denial class TRIAGE.md records for the
+  binhost failure. Grepping the audit log finds nothing; exec'ing the binary as the session
+  domain finds it immediately.
+- **checkpath fowner.** `checkpath -d -m 0700 -o branch:root /run/openrc/user/branch` prepares
+  the per-user runtime directory with uid 0 but in the *user's* domain, so it does not own the
+  directory it is chowning and the kernel asks for CAP_FOWNER, which `staff_t` did not have:
+  `denied { fowner } for comm="checkpath"`,
+  `scontext=staff_u:staff_r:staff_t:s0-s0:c0.c1023 tclass=capability`.
+- **Emulator / KVM.** `/dev/kvm` is `kvm_device_t`, mode 0666 root:kvm, so nothing but the
+  policy was in the way and `staff_t` had no access at all (`sesearch -A -s staff_t -t
+  kvm_device_t` is empty). The session's Android emulator probed it on start, was refused, fell
+  back to software emulation and kept probing: 493 `{ read }` denials in the first 85 minutes
+  after the r28 boot. refpolicy ships no interface for `kvm_device_t`, so the raw grant uses
+  the standard `chr_file` read/write macro.
+
+## desktop.system.boot.te - sysinit and boot
+
+- **Method.** auditd starts in the `default` runlevel, so everything udev, tmpfiles, kmod,
+  fsadm, mount, hwclock, dmesg and shutdown do in `sysinit` happens before it and never reaches
+  `/var/log/audit` - those denials are only in the kernel ring, and `ausearch -ts boot` does
+  not show them.
+- **r16b - the boot path.** `/var/log/dmesg` holds the boot of the running kernel, and the AVCs
+  in it were ENFORCED: the config says enforcing, OpenRC applies it via
+  `selinux_init_load_policy()`, and they all carry `permissive=0`. That is the only hard
+  evidence of what a real enforcing boot hits, which is why it was cleared - a reboot is now
+  the practical switch. modprobe reading `/dev/console` was 4 enforced denials.
+- **dontaudits** - udev/alsa and systemd-tmpfiles/init inherited-fd bookkeeping only: the
+  transition is not blocked and nothing fails, the one case where dontaudit is right rather
+  than a grant (the same class as the 16 already dontaudited in this module).
+- **r27 - the early half of the 16:04 boot**, read from dmesg, not ausearch: hwclock reading
+  `/proc`'s filesystem attributes; bootmisc's `/run` cleanup (`mount --bind / $tmpdir`), which
+  SELinux refused, so the bind mount failed and the cleanup was silently skipped - nothing
+  depended on it that day, but the intent of the service was not being carried out; iwd
+  (labelled `NetworkManager_t` because refpolicy labels `/usr/libexec/iwd` that way) unable to
+  watch its own state directory or read the hardware database udev keeps; udev looking at
+  namespace files.
+
+## desktop.system.remote.te - sshd and the ssh client
+
+sshd is the lockout-critical service, so its rules are kept in one place: what it may do to
+`/run/openrc` state, the pty and shadow accesses it needs, and the signal it sends into the
+session.
+
+- **r15 - coverage sweep.** A two-hour capture filtered to the *enforcing* domains only (the
+  seven permissive domains and the census tooling excluded as self-inflicted) leaves just
+  these; everything else the box produced was already handled. ssh allocating a pty was four
+  denials, but sshd's side was already granted and ssh is how the box is reached remotely, so
+  the client matters. ssh also inherited a cwd on the tmpfs mount (`~/tmp`) and searched it;
+  `ssh_t` is not permissive, so an ssh started from there is denied without the rule.
+- **sshd's own state and signals** - the two lockout-relevant rules have only two denials each
+  in the whole log: sshd reading openrc's script state, and a file under `/run`. Writing `/run`
+  state is ordinary daemon behaviour, and it signals the session's processes.
+- **r21b** - ssh reads `xdg_config`. The `#!!!!` boolean suggestion on sshd's `dac_override` is
+  retained verbatim.
+
+## desktop.system.selinux.te - maintaining the policy under enforcing
+
+- `make -C <pkg> merge` runs `setsebool -P` in `pkg_postinst`, and the audit showed
+  `semanage_t` denied `relabelto` across the whole policy store - the ebuild's own post-install
+  step cannot complete with enforcing on. The interfaces used are refpolicy's for exactly that,
+  plus the two file types they do not cover (`tracefs_t`, and the store's own types written
+  raw).
+- Those allows still left every `relabelto` denied, because the block is a constraint rather
+  than a missing allow:
+
+      (constrain (file (create relabelfrom relabelto))
+        (or (eq u1 u2) (eq t1 can_change_object_identity)))
+
+  The store files carry `system_u` while this runs as `staff_u`, so `eq u1 u2` fails, and
+  `can_change_object_identity` held only `kernel_t`. Constraints sit above the allow rules, so
+  attribute membership is the only way to satisfy it - which is exactly what a
+  policy-management domain needs. No neverallow guards it.
+- `semodule`/`semanage` also asks for its own scheduling class during a merge.
+
+## desktop.system.tools.te - the admin tools a session runs
+
+- **r18 - ss, the socket census.** `ss -tulpn` walks `/proc/<pid>` to map sockets back to the
+  processes that hold them - the same access htop/nvtop needed - 17k denials in the retained
+  logs, the single largest source of AVC noise in the triage windows, and `ss` is a normal
+  admin tool rather than something unusual. Same treatment as `staff_t`: the refpolicy
+  interface for the `/proc` walk (`domain_read_all_domains_state`), plus raw allows for the
+  socket getattrs, because refpolicy has no interface for those (`domain_getattr_all_domains`
+  covers only the process class) and getattr is read-only metadata.
+- **r18b** - `domain_read_all_domains_state` is dir-only (`kernel_search_proc` + `domain:dir`
+  list perms), so `ss -p` still needed the companion interface for the process class - 113
+  denials in one window. The rest is what a root-run census needs: CAP_SYS_PTRACE to read
+  other processes' `/proc` entries, the remaining socket classes (rawip/packet/netlink_audit)
+  and `dac_read_search`.
+- `sudo nft -f <file>` runs as `iptables_t`, so loading a ruleset straight out of the overlay
+  needs the same repo access `staff_sudo_t` got. Two more socket classes the census walks that
+  r18/r18b did not name: wireplumber's uevent socket and dhcpc's udp socket. And `unconfined_t`
+  reads the audit log, `iptables_t` the repo it is pointed at.
+
+## desktop.system.sysadm.te - the admin user's session
+
+`sysadm_t` and the screen domain (`sysadm_screen_t`) derived from it: the sysadmin's own
+grants, with a rule found while triaging a service (the namespace-file reads, for instance)
+recorded on the rule. Mainly `getcap` on the domains htop walks, the
+portage/semanage/setfiles inherited-fd dontaudits, the `portage_sandbox_t` transition, the
+unlabeled `/proc` reads htop needs, a generic-node tcp bind, and `nsfs_t` getattr.
+
+## desktop.system.portage.te - the ebuild and merge path
+
+- `portage_t`, `portage_sandbox_t` and `portage_fetch_t`: binhosts over http, generic-node
+  binds, and the sandbox's inherited fd use.
+- Running an ebuild as the admin: `make compile/merge` executes the `.ebuild` file, so
+  `sysadm_t` needs to read and execute `portage_ebuild_t`.
+- Running the capture tool and the build through sudo: the obstacle is the repo tree being
+  `portage_ebuild_t`. `staff_sudo_t` is what `sudo ./aud` or `sudo make -C <pkg> merge`
+  becomes, so without this the policy cannot be triaged or maintained under enforcing at all.
+  Maintaining the policy store itself is `desktop.system.selinux`.
+
+## desktop.system.nginx.te - nginx
+
+- nginx serves `:80` and proxies to the local gate on `:8080`. The packet labels and port
+  types it needs live in `desktop.system.network`, next to the ruleset that assigns them - one
+  consumer per module.
+- nginx's proxy cache: refpolicy keeps `httpd_cache_t` for the apache module, so there is no
+  nginx-specific interface; the apache cache interfaces exist but grant a different mix, so the
+  perms are written out.
+- **r21b** - the last few from the enforcing boot: nginx's cache getattr, udev looking at
+  session dirs, ssh reading `xdg_config`, the session reading the modprobe sysctl, and the
+  unconfined entrypoint for an init script.
+
+## 2026-10-03 - the emulator's silent deaths: staff_t and `execheap`
+
+Nineteen hours of "the emulator dies about 15 s into every launch and prints
+nothing" is this one permission. The rewritten module split and comment
+condensation earlier the same evening changed nothing about it; the denial had
+been there since 19:51:01, the moment the emulator first got *past* the
+`/dev/kvm` denial (the r28 grant) and reached its renderer.
+
+    avc: denied { execheap } for pid=18363 comm="RenderThread"
+      scontext=staff_u:staff_r:staff_t tcontext=staff_u:staff_r:staff_t tclass=process
+    type=SYSCALL ... syscall=10 (mprotect) success=no exit=-13 (EACCES), a2=5 = PROT_READ|PROT_EXEC
+    type=ANOM_ABEND ... comm="RenderThread" sig=11 res=1   (0.000-0.010 s later, same pid)
+
+SwiftShader's Subzero JIT (the `swiftshader_indirect` GPU mode) maps its code page
+writable and then mprotects it executable. `execheap` is that flip on an existing
+heap mapping; `execmem`, which staff_t has unconditionally, is the mapping itself.
+Staff_t had no execheap rule at all, and the boolean that gates it for init_t,
+spc_t and the unconfined domains (`allow_execheap`) does not cover staff_t - so
+`setsebool` would not have helped.
+
+Counted, not inferred: 186 distinct qemu pids with an `execheap` denial, 186 with a
+RenderThread SIGSEGV, 183 with a matching ANOM_ABEND, 1:1, one death each. The
+crash database (`/tmp/android-branch/emu-crash-37.1.11.db`) never received a single
+report, which is why the emulator's own log ends mid-sentence at "Emulator is
+performing a full startup": the signal never traversed crashpad's dump path.
+
+Granted one line, in desktop.system.session (the emulator is a user session
+service, the subject is staff_t), with the arithmetic in the comment.
+
+**Method lesson, and a self-inflicted one.** The audit watcher that reports new
+denials carried `execheap` in its `-vE` exclusion list from the triage of an
+unrelated portage/JIT case, so it never fired; and an earlier check that "the loop
+is not policy, zero denials with dontaudits off" was reading that filtered view.
+567 execheap denials had accumulated. Two rules out of this: an exclusion list is
+a claim about the *past* and has to be re-derived when the symptom changes, and any
+"not policy" conclusion has to name the filter it was reached through.
+
+**Dead ends, recorded so they are not re-tried.** `-gpu guest` does not avoid the
+JIT: the emulator maps it to lavapipe (llvmpipe/LLVM), which also mprotects code
+pages, and a controlled run with `-read-only -port 5556` died identically at ~18 s
+(three execheap AVCs, then ANOM_ABEND sig=11 on the same thread). `-gpu host` (the
+box's NVIDIA card, no host JIT) is the policy-free alternative if this grant is ever
+wanted back; it is untested here because the emulator runs headless from a user
+service with no DISPLAY.
+
+**Containment, unrelated to policy but the reason this took 19 hours to notice:**
+the emulator service is `respawn_max=0`, so it retried ~198 times in silence instead
+of failing visibly. `respawn_max=5` with `respawn_period=300` turns the next such
+failure into a service that stops and says so.
+
+## 2026-10-03 - `name_bind` on 5353 is denied, and refpolicy hides it
+
+Writing an mDNS query tool for this box surfaced a denial with no AVC at all: port
+5353 is `howl_port_t`, `staff_t` holds `name_bind` only on `port_t`, and refpolicy
+ships
+
+    dontaudit staff_t defined_port_type:udp_socket name_bind;
+
+so the EACCES arrives with nothing in the audit log. Binding 5353 fails the same way
+for root (`sysadm_t`), i.e. it is refused for every general-purpose domain here.
+
+Not granted, deliberately: nothing on this box needs to *receive* multicast mDNS.
+`~/bin/adbtrack` implements discovery as a query with the QU (unicast-response) bit,
+answered straight back to an ephemeral port, which needs no name_bind - that is how
+the phone was found at 192.168.1.100:40139 when adb's own mDNS was unavailable
+(`adb mdns check` -> "mdns daemon unavailable"; avahi-daemon is not running).
+`~/bin/mdns-adb-query` uses the same trick for the same reason.
+
+If something ever does need multicast receive, the grant is
+`corenet_udp_bind_howl_port(staff_t)` (or the raw `allow staff_t howl_port_t:udp_socket
+name_bind;`), and the dontaudit above should be removed in the same change so that a
+failure of this kind is visible next time.

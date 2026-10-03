@@ -25,9 +25,8 @@ gen_require(`
 
 # The admin user's session: sysadm_t, and the screen domain derived from it.
 #
-# The sysadmin's own grants. Where a rule here was found while triaging a service
-# (the namespace-file reads, for instance) that is recorded on the rule.
-
+# The sysadmin's own grants; a rule found while triaging a service is noted on the rule.
+# Method and evidence: ../../TRIAGE.md.
 
 files_search_default(sysadm_screen_t)
 

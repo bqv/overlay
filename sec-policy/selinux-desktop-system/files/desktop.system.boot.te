@@ -28,11 +28,9 @@ gen_require(`
 
 # sysinit and boot: udev, tmpfiles, kmod, fsadm, mount, hwclock, dmesg, shutdown.
 #
-# Two lessons are recorded on the rules below, both about *where* boot denials
-# are found: auditd starts in the 'default' runlevel, so everything sysinit does
-# happens before it and never reaches /var/log/audit - those are only in the
-# kernel ring, and `ausearch -ts boot` does not show them.
-
+# Method and evidence: ../../TRIAGE.md. Two method notes live there: auditd starts in the
+# 'default' runlevel, so sysinit denials never reach /var/log/audit and are only in the
+# kernel ring (`ausearch -ts boot` does not show them).
 
 # r21b: an init script that runs unconfined needs its entry point.
 allow unconfined_t initrc_exec_t:file entrypoint;
@@ -54,43 +52,26 @@ term_use_console(tmpfiles_t)
 
 allow udev_t self:capability2 perfmon;
 
-# --- r16b: the boot path ---
-#
-# /var/log/dmesg holds the boot of the running kernel, and the AVCs in it were
-# ENFORCED: the config says enforcing, OpenRC applies it via
-# selinux_init_load_policy(), and these all carry permissive=0. So this is the
-# only hard evidence of what a real enforcing boot hits - worth clearing, since a
-# reboot is now the practical switch.
-# modprobe reads /dev/console (4 enforced denials). refpolicy's interface for it,
-# the same one dmesg_t already uses.
+# --- r16b: the boot path, from /var/log/dmesg (those AVCs carry permissive=0, i.e. enforced) ---
+# modprobe reads /dev/console (4 denials); refpolicy's interface, the one dmesg_t already uses.
 term_read_console(kmod_t)
 
-# Inherited-fd bookkeeping only. The transition is not blocked and nothing
-# fails, which is the one case where dontaudit is right rather than a grant -
-# the same class as the 16 already dontaudited in this file.
+# Inherited-fd bookkeeping only: the transition is not blocked and nothing fails, the one
+# case where dontaudit is right rather than a grant.
 dontaudit udev_t alsa_t:process { noatsecure rlimitinh siginh };
 # systemd-tmpfiles inherits the console fd from init and only loses the ability
 # to print to the console. Nothing functional.
 dontaudit systemd_tmpfiles_t init_t:fd { use };
 
 getattr_files_pattern(initrc_t, nsfs_t, nsfs_t)
-# --- r27: the 16:04 boot, the early half - read from dmesg, not ausearch ---
-#
-# auditd runs in the 'default' runlevel, so everything udev, tmpfiles and
-# hwclock do in 'sysinit' happens BEFORE auditd is up and never reaches
-# /var/log/audit. Those denials are only in the kernel ring. This batch is that
-# half of the boot, and it was invisible to every inventory taken with
-# `ausearch -ts boot` - worth remembering as a method, not just a fix.
-#
+# --- r27: the 16:04 boot, the early half - read from dmesg, not ausearch (sysinit runs before auditd) ---
 #  - hwclock reading /proc's filesystem attributes at boot
 kernel_getattr_proc(hwclock_t)
-#  - bootmisc's /run cleanup is `mount --bind / $tmpdir`, which SELinux refused:
-#    the bind mount failed and the cleanup was silently skipped. Nothing depended
-#    on it that day, but the intent of the service was not being carried out.
+#  - bootmisc's /run cleanup is `mount --bind / $tmpdir`; SELinux refused the bind mount and
+#    the cleanup was silently skipped, so the service's intent was not carried out.
 allow mount_t initrc_tmp_t:dir mounton;
-#  - iwd runs in NetworkManager_t (refpolicy labels /usr/libexec/iwd that way),
-#    and it could not watch its own state directory, nor read the hardware
-#    database udev keeps.
+#  - iwd runs in NetworkManager_t: it could not watch its own state directory, nor read the
+#    hardware database udev keeps.
 allow NetworkManager_t NetworkManager_var_lib_t:dir { watch watch_reads };
 systemd_read_hwdb(NetworkManager_t)
 #  - udev looking at namespace files
