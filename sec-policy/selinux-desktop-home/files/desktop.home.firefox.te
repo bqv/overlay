@@ -67,6 +67,6 @@ allow mozilla_t xserver_tmpfs_t:file map;
 # reading gtk's config (not just searching the dir) and opening psi.
 allow mozilla_t mozilla_tmpfs_t:file execute;
 allow mozilla_t mozilla_tmp_t:file execute;
-allow mozilla_t xdg_cache_t:file { append open read write };
-allow mozilla_t gnome_xdg_config_t:file read;
-allow mozilla_t proc_psi_t:file open;
+allow mozilla_t xdg_cache_t:file { append getattr lock open read write };
+allow mozilla_t gnome_xdg_config_t:file { open read };
+allow mozilla_t proc_psi_t:file { getattr open read };

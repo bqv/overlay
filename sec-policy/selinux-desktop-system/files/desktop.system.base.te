@@ -611,8 +611,8 @@ allow staff_t initrc_state_t:file { create getattr open read unlink write };
 allow staff_t initrc_state_t:fifo_file { getattr ioctl open read unlink write };
 allow staff_t var_run_t:dir { write remove_name };
 # the session init dropping to the user, and the login record it keeps
-allow staff_t self:capability setgid;
-allow staff_t lastlog_t:file { read write };
+allow staff_t self:capability { setgid chown };
+allow staff_t lastlog_t:file { getattr open read write };
 # nvidia-modprobe creating /dev/nvidia-caps
 allow staff_t device_t:dir add_name;
 # r21b granted `read` on the modprobe sysctl; the session opens it as well
@@ -626,4 +626,15 @@ allow staff_t sysctl_modprobe_t:file open;
 # is one line of file context (see fcontexts.local): /run/nginx(/.*)? is
 # nginx_runtime_t, which the nginx module already grants in full.
 # udev opens the seat file it already reads
-allow udev_t systemd_sessions_runtime_t:file open;
+allow udev_t systemd_sessions_runtime_t:file { getattr open read };
+
+# --- r26: the 16:04 boot, the one where the session got as far as PAM ---
+#
+# The session's own state, again: checkpath wanted to relabel /run/openrc/user
+# (left denied on purpose - the context is already right, and relabelfrom across
+# SELinux users is exactly what the UBAC constraint exists to stop, so granting
+# can_change_object_identity to staff_t to silence it would be a bad trade).
+# These are the ones that are genuinely needed: the init chowning the session
+# dir to the user, opening lastlog to record the login, and unlinking the
+# supervise pid file when the session is retired.
+allow staff_t var_run_t:file unlink;

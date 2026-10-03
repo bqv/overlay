@@ -1,0 +1,38 @@
+# Local additions to the login context map - contexts/users/<selinux-user>.
+#
+# Like fcontexts.local and booleans.local, this lives outside the module store
+# (it is a refpolicy data file installed by sec-policy/selinux-base-policy, not
+# a rule), so the repo records it with the command that reapplies it.
+#
+#   contexts/users/staff_u
+#
+#     staff_r:staff_t:s0               staff_r:staff_t:s0-s0:c0.c1023
+#     staff_r:staff_t:s0-s0:c0.c1023   staff_r:staff_t:s0-s0:c0.c1023
+#
+#   Why: every other key in that file is a *login program* - local_login_t,
+#   remote_login_t, sshd_t, crond_t, xdm_t, and the su/sudo wrappers. The OpenRC
+#   user session is started by none of them: PAM resolves the xdm login to
+#   staff_r:staff_t, and openrc-user then opens a SECOND PAM session from that
+#   same context. With no key for staff_r:staff_t the lookup fell through to
+#   staff_u:sysadm_r:sysadm_t:s0, and the exec of the session shell was refused
+#   - not for want of an allow (`allow staff_t sysadm_t:process transition`
+#   exists) but by the MCS constraint, because the source carried
+#   s0-s0:c0.c1023 and the resolved target carried only s0.
+#
+#   Consequence: the user runlevel never ran at all. dsh, llama, adb, emulator
+#   and protonmail all failed on every enforcing boot, and `failed/` stayed
+#   empty because OpenRC never reached the point of failing anything.
+#
+#   Reapply after sec-policy/selinux-base-policy is reinstalled, which rewrites
+#   this file:
+#
+#     printf '%s\n' \
+#       'staff_r:staff_t:s0\t\t\tstaff_r:staff_t:s0-s0:c0.c1023' \
+#       'staff_r:staff_t:s0-s0:c0.c1023\tstaff_r:staff_t:s0-s0:c0.c1023' \
+#       >> /etc/selinux/mcs/contexts/users/staff_u
+#
+#   Note there is no users/sysadm_u file at all, so a session for `stem`
+#   (seusers: sysadm_u) has the same gap - unverified, because the desktop login
+#   is `branch`.
+staff_r:staff_t:s0               staff_r:staff_t:s0-s0:c0.c1023
+staff_r:staff_t:s0-s0:c0.c1023   staff_r:staff_t:s0-s0:c0.c1023

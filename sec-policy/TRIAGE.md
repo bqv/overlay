@@ -1281,3 +1281,61 @@ denied. A bad path here is not a missing feature, it is a dead network.
 The nginx boolean moved into the same package's `pkg_postinst` beside the other
 `setsebool -P` calls, so a reinstall reproduces it instead of depending on the
 manual call recorded in `booleans.local`.
+
+## r26 - the 16:04 boot: the session chain, from greetd up
+
+nginx came up on its own this time, and `checkpath` created
+`/run/openrc/user/branch` at boot - the r24 relabel works, and the registry
+failure did not recur (`dsh.err` was untouched). But the user runlevel still did
+not run, and the reason is four layers down the chain:
+
+1. **greetd is correct.** `/usr/bin/greetd` is `xdm_exec_t` and the daemon runs
+   as `system_u:system_r:xdm_t` - no problem at the top.
+2. **The login resolves correctly.** PAM answers the greeter's request for
+   `branch` (seusers: `staff_u`) from the `system_r:xdm_t` source, which
+   `contexts/users/staff_u` maps to `staff_r:staff_t`. So the session launcher
+   runs as `staff_t`.
+3. **`openrc-user` opens a *second* PAM session** - from `staff_r:staff_t`. Every
+   other key in that file is a *login program* (local_login_t, remote_login_t,
+   sshd_t, crond_t, xdm_t, su/sudo). There is no key for `staff_r:staff_t`, so
+   the lookup fell through and resolved to `staff_u:sysadm_r:sysadm_t:s0`.
+4. **The exec was refused** - `denied { transition } staff_t ->
+   staff_u:sysadm_r:sysadm_t:s0` on `/bin/bash`. Not for want of an allow:
+   `allow staff_t sysadm_t:process transition` exists. It is the **MCS
+   constraint**: the source carried `s0-s0:c0.c1023` and the resolved target
+   carried only `s0`.
+
+So `openrc-user` never exec'd the session shell, `openrc --user default` was
+never reached, and **the entire runlevel never ran** - which is why `failed/` is
+empty and nothing appears in any log as a failure. dsh only existed because it
+was started by hand.
+
+Fixed by adding the missing key to `contexts/users/staff_u`; recorded in
+`contexts.local` because selinux-base-policy rewrites that file. Note
+`contexts/users/sysadm_u` does not exist at all, so a session for `stem` has the
+same latent gap.
+
+Also granted (r26): the session init's `self:capability chown`, `lastlog_t:file
+open`, `var_run_t:file unlink` for retiring the supervise pid file, udev's
+`getattr` on the seat file, and mozilla's `xdg_cache_t:file { getattr lock }`,
+`proc_psi_t:file getattr` and `gnome_xdg_config_t:file open` - those last three
+were the loudest denials of the boot at 128, 127 and 86.
+
+Deliberately **not** granted: `staff_t -> initrc_state_t:dir relabelfrom`.
+checkpath tries to relabel `/run/openrc/user`, which is `system_u`, from a
+`staff_u` process - exactly what the UBAC constraint exists to prevent. The
+context is already correct, so the right answer is no, not
+`can_change_object_identity` for staff_t.
+
+### "Context /run is not valid (left unmapped)"
+
+A kernel message, `dmesg` at t=9.93 s, and it is a *mount* complaint rather than
+a file label: the kernel was handed `context=/run` - a path where a context
+belongs - by something mounting, and left that mount unmapped as a result. It is
+not fstab (the `/run` line there has been commented out since at least
+1 October, per the backup taken before the `/var/tmp` typo fix) and not in any
+OpenRC script. `/run` ends up correctly mounted (`tmpfs`, `seclabel`, `mode=755`)
+and correctly labelled `var_run_t`, and no /run path has been mislabelled since,
+so it is benign - but the caller is still unidentified. Next step is to grep the
+initramfs *contents* (dracut modules), not the compressed image, which was
+searched and does not contain the string.
