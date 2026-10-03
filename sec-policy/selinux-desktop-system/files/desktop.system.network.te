@@ -1,6 +1,7 @@
 policy_module(desktop.system.network, 1.0)
 
 gen_require(`
+	attribute client_packet_type;
 	attribute packet_type;
 	type staff_t;
 	type sysadm_t;
@@ -189,6 +190,16 @@ allow staff_t dynamic_packet_t:packet { send recv };
 # be dropped. Losing the lease is the one flow failure that would cut this box off
 # the network, so it keeps a net until that observation exists.
 allow dhcpc_t dynamic_packet_t:packet { send recv };
+
+# dhcpcd holds promiscuous AF_PACKET sockets - three of them, and one is bound to eno1
+# (ss -0apne: fd=21, ino 8006) - so the kernel checks `packet recv` for dhcpc_t against
+# the secmark of every inbound packet on both interfaces. The client-flow labels are this
+# box's own outbound flows, which dhcpcd can never read: 3525 http + 423 dns + 19 mdns
+# denials in one boot, with nothing failing. So dontaudit rather than grant - and the
+# attribute is right because it covers every client label the ruleset can assign, not
+# only the ones this boot happened to produce.
+dontaudit dhcpc_t client_packet_type:packet recv;
+dontaudit dhcpc_t mdns_packet_t:packet recv;
 
 allow sysadm_t local_packet_t:packet { send recv };
 allow staff_t local_packet_t:packet { send recv };
