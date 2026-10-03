@@ -17,6 +17,8 @@ gen_require(`
   type gpg_t;
   type gpg_runtime_t;
   type gpg_secret_t;
+  type gpg_agent_t;
+  type gpg_pinentry_t;
   type ptmx_t;
   type fonts_t;
   type xserver_tmpfs_t;
@@ -743,6 +745,22 @@ allow gpg_t gpg_secret_t:dir watch;
 # present - but the path it is on is real: allocating a pty for a passphrase
 # prompt.
 allow gpg_t ptmx_t:chr_file rw_chr_file_perms;
+# (r31 widened this to the whole gpg family - see below.)
+
+# r31: the gpg family needs /dev/ptmx, not just gpg_t
+#
+# r30 granted ptmx_t to gpg_t, and the next session run denied the identical
+# { read write } on /dev/ptmx for gpg_agent_t - the agent that runs the passphrase
+# prompt - while gpg_pinentry_t had no ptmx access either. All three were in the
+# same hole, so a single-domain grant would have been whack-a-mole.
+#
+# The per-domain set is exactly staff_t's own ({ append getattr ioctl lock open
+# read write } = rw_chr_file_perms), which is the narrow thing that was actually
+# denied; refpolicy's user-terminal bundles are deliberately NOT used here,
+# because nothing on the tty/pts path has been observed to fail.
+allow gpg_t ptmx_t:chr_file rw_chr_file_perms;
+allow gpg_agent_t ptmx_t:chr_file rw_chr_file_perms;
+allow gpg_pinentry_t ptmx_t:chr_file rw_chr_file_perms;
 
 # Emulator / KVM
 #
