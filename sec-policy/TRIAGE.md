@@ -1090,12 +1090,18 @@ all**. Under enforcing the receive is denied, the lease lifetimes run out, and
 IPv6 dies about half an hour after boot - while IPv4 keeps working, so it would
 have looked like an unrelated mystery.
 
-Fixed in the ruleset, not by granting `unlabeled_t`: both chains now handle
-`ct state untracked` (ICMP/ICMPv6 -> `icmp_packet_t`, everything else off
-loopback -> the existing `unclassified`/`dynamic_packet_t` bucket, loopback
-output -> `local`). `dhcpc_t` already holds `icmp_packet_t` and
-`dynamic_packet_t`, so no new allow was needed - the packets were simply never
-classified. The three `dhcpc_t` packet types above stay denied.
+Fixed in the ruleset, not by granting `unlabeled_t`: **ICMP and ICMPv6 are now
+labelled from the protocol alone, in every conntrack state**, with a
+`ct state untracked` fallback for anything else off the loopback. `ct state new`
+was never the right guard - a packet on a flow whose conntrack entry carries no
+secmark is labelled *empty* by the `established,related -> ct secmark` line, and
+multicast ICMPv6 is frequently untracked outright, so no state guard reaches it.
+
+Verified under enforcing: `ping6 ff02::1%eno1` went from `0 received` with five
+`permissive=0` denials to `2 received, 0% loss` with **zero** AVCs. The router
+advertisements dhcpcd needs are the same protocol and the same fix, and
+`dhcpc_t` already holds `icmp_packet_t` - no new allow was needed, the packets
+were simply never classified. The three `dhcpc_t` packet types above stay denied.
 
 ### Two things checked rather than assumed
 

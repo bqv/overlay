@@ -131,21 +131,24 @@ table inet filter {
 		#    loopback flow to :80 would become http_server instead of
 		#    http_client, and the browser's next receive would be denied).
 		# unclassified inbound keeps a label instead of being left unlabeled
-		# 1b. untracked packets - multicast ICMPv6 (router advertisements and
-		#     neighbour discovery) never enters conntrack, so every state guard
-		#     below misses it and it arrives unlabeled. A raw socket (dhcpcd's)
-		#     is then denied the receive, and IPv6 goes with it: accept_ra=0 on
-		#     this box, so dhcpcd is what keeps the address and the default
-		#     route alive.
-		ct state untracked ip6 nexthdr icmpv6 meta secmark set "icmp_server"
-		ct state untracked ip protocol icmp meta secmark set "icmp_server"
+		# 1b. ICMP and ICMPv6 are labelled from the protocol alone, in every
+		#     conntrack state - `ct state new` is not enough. Multicast ICMPv6
+		#     (router advertisements, neighbour discovery) is often not tracked
+		#     at all, and a packet on a flow whose conntrack entry carries no
+		#     secmark is labelled *empty* by the line above. That is how dhcpcd
+		#     lost the router advertisements - accept_ra=0 here, so dhcpcd is what
+		#     keeps the IPv6 address and default route alive - and how a ping
+		#     reply came back unlabeled. IPv4 kept working throughout, so it would
+		#     have read as an unrelated mystery.
+		ip6 nexthdr icmpv6 meta secmark set "icmp_server"
+		ip protocol icmp meta secmark set "icmp_server"
+
+		# 1c. any other packet no state guard above reaches
 		ct state untracked meta iifname != "lo" meta secmark set "unclassified"
 		ct state new meta iifname != "lo" meta secmark set "unclassified"
 		ct state new meta iifname != "lo" meta secmark set tcp dport map @secmapping_in
 		ct state new meta iifname != "lo" meta secmark set udp dport map @secmapping_in
 
-		ct state new ip protocol icmp meta secmark set "icmp_server"
-		ct state new ip6 nexthdr icmpv6 meta secmark set "icmp_server"
 
 		iif lo tcp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_server"
 		iif lo udp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_server"
@@ -169,10 +172,10 @@ table inet filter {
 
 		ct state established,related meta secmark set ct secmark
 
-		# untracked multicast ICMPv6, the send side of the same exchange
-		# (dhcpcd's router solicitation); see the input chain.
-		ct state untracked ip6 nexthdr icmpv6 meta secmark set "icmp_server"
-		ct state untracked ip protocol icmp meta secmark set "icmp_server"
+		# as in the input chain: ICMP from the protocol alone, in every state
+		# (dhcpcd's router solicitation is the send side of the same exchange).
+		ip6 nexthdr icmpv6 meta secmark set "icmp_server"
+		ip protocol icmp meta secmark set "icmp_server"
 		ct state untracked oif lo meta secmark set "local"
 		ct state untracked meta oifname != "lo" meta secmark set "unclassified"
 		ct state new oif lo meta secmark set "local"
@@ -181,8 +184,6 @@ table inet filter {
 		ct state new meta secmark set tcp dport map @secmapping_out
 		ct state new meta secmark set udp dport map @secmapping_out
 
-		ct state new ip protocol icmp meta secmark set "icmp_server"
-		ct state new ip6 nexthdr icmpv6 meta secmark set "icmp_server"
 
 		oif lo tcp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_client"
 		oif lo udp dport 22 ip6 saddr ::1 ip6 daddr ::1 meta secmark set "ssh_client"
