@@ -1567,3 +1567,42 @@ this box until August. The boot is the last unknown, but the connect becomes
 possible by construction: the peer socket will then be syslogd_t, for which
 `staff_t ... unix_dgram_socket sendto` is already granted (boolean
 user_all_users_send_syslog, currently on).
+
+### Layer 5 - the session template itself was not executable
+
+Found by asking "what else in this chain have I not exec'd as the session
+domain?" - the answer was the unit itself:
+
+    /etc/init.d/user       initrc_exec_t      staff_t: no execute  ->  denied
+    (via /run/openrc/init.d/user.branch, which pam_openrc execs per login)
+
+    sudo -r staff_r -t staff_t /etc/init.d/user
+      -> sesh: unable to execute /etc/init.d/user: Permission denied
+    after  semanage fcontext -a -t bin_t '/etc/rc.d/init.d/user'
+           restorecon -v /etc/init.d/user
+      -> Usage: user [options] stop | start | restart | status | describe | zap
+
+Same class as the checkpath mislabel in r24, and fixed the same narrow way: the
+one path gets bin_t, rather than an execute grant on initrc_exec_t that would
+hand every confined session all of /etc/init.d. This is the path pam_openrc
+takes, and it is now executable from the session domain.
+
+Every other exec in the chain was checked explicitly and is allowed:
+openrc-run, start-stop-daemon, supervise-daemon, openrc-user, openrc-user.sh
+(all bin_t), /sbin/openrc (rc_exec_t, granted in r28), the five user service
+scripts (user_home_t) and their commands (user_bin_t / bin_t), plus /bin/sh and
+/bin/bash.
+
+Two honest caveats about attribution and about what a harness can prove:
+
+* This layer is measured *now* (denied, then allowed), but the login of 16:47:21
+  shows checkpath running from start_pre() with an *empty* service state
+  directory - which is also what pam_openrc's own setup would produce. So I
+  cannot say with certainty whether this layer or the syslog one killed that
+  particular login; both are fixed, and the chain now verifies at every exec.
+* strace cannot follow pam_openrc's child: it detaches, so a harness run shows
+  only the two /dev/log connects (from pam_openrc logging) and no exec of the
+  unit. Absence of that execve in a trace is a harness limit, not evidence.
+* /run is mounted noexec, which is why an exec *through* a path inside /run
+  returns EPERM regardless of labels. It does not stop this chain: the unit is
+  reached through a symlink whose target is on the root filesystem.

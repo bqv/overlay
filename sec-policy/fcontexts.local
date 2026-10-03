@@ -72,3 +72,30 @@
 #   semanage fcontext -a -s system_u -t alsa_runtime_t "/run/alsasound(/.*)?"
 #
 /run/alsasound(/.*)?    system_u:object_r:alsa_runtime_t:s0
+
+#   /etc/init.d/user                      system_u:object_r:bin_t:s0
+#
+#   Why: this is OpenRC's *user-session template*. pam_openrc symlinks it per
+#   login (/run/openrc/init.d/user.<login>) and execs it **in the session user's
+#   own context** - the checkpath calls at login come from its start_pre(). It
+#   shipped as initrc_exec_t, which no user domain may execute:
+#
+#     sesearch -A -s staff_t -t initrc_exec_t -c file
+#       -> { entrypoint getattr open read }        <- no execute
+#     sudo -r staff_r -t staff_t /etc/init.d/user
+#       -> sesh: unable to execute /etc/init.d/user: Permission denied
+#
+#   Same class as /usr/libexec/rc/bin/checkpath above: a file the *session* has
+#   to execute, labelled with a system entry-point type. The narrow fix is a
+#   bin_t label for this one path, not an `execute` grant on initrc_exec_t, which
+#   would hand every confined session the whole of /etc/init.d.
+#
+#   Note the file-contexts equivalency rule: semanage rejects '/etc/init.d/user'
+#   with "conflicts with equivalency rule '/etc/init.d /etc/rc.d/init.d'", so the
+#   entry has to be written against the other spelling. /etc/rc.d/init.d does not
+#   exist on this box; the rule is what makes the spec work.
+#
+#   Reapply after sec-policy/selinux-base-policy is reinstalled:
+#
+#     semanage fcontext -a -t bin_t '/etc/rc.d/init.d/user'
+#     restorecon -v /etc/init.d/user
