@@ -47,6 +47,9 @@ gen_require(`
   class udp_socket { getattr node_bind };
   class unix_dgram_socket { create getattr ioctl sendto };
   class unix_stream_socket { getattr ioctl read write };
+  type staff_gkeyringd_t;
+  type xdg_data_t;
+  class process2 { nnp_transition nosuid_transition };
 ')
 
 # The session user (staff_t) and the per-role domains refpolicy derives from it.
@@ -159,3 +162,30 @@ allow staff_git_t self:unix_dgram_socket { create ioctl };
 allow staff_t sysctl_modprobe_t:file read;
 # r21b: ... and writes into a device directory.
 allow staff_t device_t:dir write;
+
+# Appended from sec-policy/selinux-desktop-home (files/desktop.home.te).
+# The receiving module's gen_require block is NOT included or altered here.
+
+# staff_git_t: this module owns the per-role git domain (type staff_git_t in its
+# gen_require, with its git grants further down the file). The nnp transition is
+# made by staff_t, but the domain it constrains is staff_git_t. The home file
+# carries no note for that line.
+allow staff_t staff_git_t:process2 { nnp_transition nosuid_transition };
+# git reading ~/.local/share
+search_dirs_pattern(staff_git_t, xdg_data_t, xdg_data_t)
+read_lnk_files_pattern(staff_git_t, xdg_data_t, xdg_data_t)
+
+# staff_gkeyringd_t: no other module in either package mentions this per-role
+# keyring domain, and the home file's own comment groups it with the per-role
+# domains ("another per-role app domain, and like staff_git_t"); those live here.
+# staff_gkeyringd_t is another per-role app domain, and like staff_git_t it gets
+# the app's own access but nothing for the user's files: gnome_keyring_home_t
+# exists with zero rules for it, so under enforcing the keyring daemon could not
+# read the user's keyrings at all. This is refpolicy's interface for it.
+gnome_read_keyring_home_files(staff_gkeyringd_t)
+
+# ssh_t: the nnp transition into the ssh client. This module already carries the
+# same permission set for the same target ("allow staff_git_t ssh_t:process2
+# { nnp_transition nosuid_transition };"), and its gen_require already declares
+# both ssh_t and staff_t. See report.txt for the alternative destination.
+allow staff_t ssh_t:process2 { nnp_transition nosuid_transition };

@@ -5,30 +5,20 @@ gen_require(`
   type avahi_initrc_exec_t;
   type bluetooth_initrc_exec_t;
   type cgroup_t;
-  type chkpwd_t;
-  type default_t;
   type device_t;
   type devpts_t;
   type entropyd_initrc_exec_t;
   type initrc_exec_t;
   type initrc_state_t;
   type iptables_initrc_exec_t;
-  type local_login_t;
   type nscd_initrc_exec_t;
   type nsfs_t;
   type ntpd_initrc_exec_t;
   type postgresql_initrc_exec_t;
-  type shadow_t;
-  type ssh_t;
-  type staff_bubblewrap_t;
   type staff_dbusd_t;
-  type staff_git_t;
-  type staff_gkeyringd_t;
   type staff_t;
-  type sysadm_screen_t;
   type sysadm_t;
   type sysctl_irq_t;
-  type systemd_sessions_runtime_t;
   type tor_initrc_exec_t;
   type user_home_dir_t;
   type user_tmpfs_t;
@@ -37,25 +27,21 @@ gen_require(`
   type wtmp_t;
   type xauth_t;
   type xauth_tmp_t;
-  type xdg_data_t;
   type xserver_t;
   type xserver_tmpfs_t;
   attribute domain;
   class anon_inode { create getattr map read write };
-  class capability { audit_write dac_override dac_read_search net_admin setuid };
-  class chr_file { getattr ioctl open read write };
-  class dir { add_name create getattr mounton open read remove_name search relabelfrom relabelto };
-  class fifo_file { create getattr open read write };
-  class file { create getattr map open read unlink write relabelfrom relabelto };
-  class io_uring allowed;
-  class key create;
-  class lnk_file { create read unlink };
+  class capability { audit_write chown dac_override dac_read_search net_admin setuid sys_admin sys_ptrace sys_tty_config };
+  class chr_file { getattr ioctl map open read write };
+  class dir { add_name create getattr mounton open read relabelfrom relabelto remove_name search watch write };
+  class fifo_file { create getattr ioctl open read unlink write };
+  class file { create execute getattr link lock map open read relabelfrom relabelto unlink watch write };
+  class io_uring { allowed };
+  class key { create };
+  class lnk_file { create getattr read unlink };
   class netlink_generic_socket { bind create getattr read setopt write };
-  class process { execmem getcap noatsecure ptrace rlimitinh setexec setsched siginh transition };
-  class process2 { nnp_transition nosuid_transition };
-  class udp_socket { read write };
-  class unix_dgram_socket sendto;
-  class unix_stream_socket { getattr ioctl read write };
+  class process { execmem getcap getsched noatsecure ptrace rlimitinh setexec setsched siginh sigkill transition };
+  class unix_dgram_socket { connect create getattr ioctl sendto };
 ')
 
 ##============= staff_t ==============
@@ -124,38 +110,13 @@ corenet_tcp_bind_generic_node(staff_t)
 
 # the harness ptrace's its own children and sets the scheduler of the sandbox.
 allow staff_t self:process ptrace;
-allow staff_t staff_bubblewrap_t:process setsched;
 
 # fuse filesystems from the session (fuse_worker, 22 read + 22 write).
 storage_rw_fuse(staff_t)
 
-# --- the bubblewrap sandbox (this session runs inside one) ---
-
-# bwrap builds its sandbox by remounting /proc, /dev/pts, sysfs, bpf, configfs,
-# debugfs, tracefs, pstore, efivarfs, binfmt_misc...: ~200 remount denials in
-# one capture. If this is denied under enforcing the sandbox cannot be built.
-fs_remount_all_fs(staff_bubblewrap_t)
-
-# ...and it needs the controlling pty, plus xdg data links and to read its own
-# udp socket.
-term_use_ptmx(staff_bubblewrap_t)
-
-# steam's webhelper reads its own crash-dump settings under /tmp.
-userdom_read_user_tmp_files(staff_bubblewrap_t)
-# /proc/pressure: the sandbox reads pressure-stall info.
-kernel_read_psi(staff_bubblewrap_t)
-read_lnk_files_pattern(staff_bubblewrap_t, xdg_data_t, xdg_data_t)
-allow staff_bubblewrap_t self:udp_socket read;
 
 # java binds an unreserved port for its own services.
 corenet_tcp_bind_all_unreserved_ports(staff_t)
-
-
-# staff_gkeyringd_t is another per-role app domain, and like staff_git_t it gets
-# the app's own access but nothing for the user's files: gnome_keyring_home_t
-# exists with zero rules for it, so under enforcing the keyring daemon could not
-# read the user's keyrings at all. This is refpolicy's interface for it.
-gnome_read_keyring_home_files(staff_gkeyringd_t)
 
 
 # htop and nvtop walk every process's /proc/<pid> directory, and each of those
@@ -200,9 +161,6 @@ allow staff_t self:io_uring allowed;
 #xserver_read_state(staff_t) # pgrep
 #xserver_read_xdm_state(staff_t) # pgrep
 
-allow local_login_t chkpwd_t:process { noatsecure rlimitinh siginh };
-search_dirs_pattern(local_login_t, default_t, default_t)
-allow local_login_t self:capability net_admin;
 
 getattr_files_pattern(staff_t, auditd_initrc_exec_t, auditd_initrc_exec_t)
 getattr_files_pattern(staff_t, avahi_initrc_exec_t, avahi_initrc_exec_t)
@@ -213,7 +171,6 @@ getattr_files_pattern(staff_t, entropyd_initrc_exec_t, entropyd_initrc_exec_t)
 allow staff_t initrc_exec_t:file { entrypoint getattr open read };
 allow staff_t initrc_state_t:dir { add_name create getattr open read remove_name search };
 allow staff_t initrc_state_t:fifo_file create;
-allow staff_t initrc_state_t:file { create getattr open read unlink write };
 allow staff_t initrc_state_t:lnk_file { create read unlink };
 getattr_files_pattern(staff_t, iptables_initrc_exec_t, iptables_initrc_exec_t)
 getattr_files_pattern(staff_t, nscd_initrc_exec_t, nscd_initrc_exec_t)
@@ -221,7 +178,6 @@ getattr_files_pattern(staff_t, nsfs_t, nsfs_t)
 getattr_files_pattern(staff_t, ntpd_initrc_exec_t, ntpd_initrc_exec_t)
 getattr_files_pattern(staff_t, postgresql_initrc_exec_t, postgresql_initrc_exec_t)
 allow staff_t self:capability { audit_write dac_override dac_read_search net_admin setuid sys_ptrace };
-allow staff_t self:process setexec;
 # allow staff_t shadow_t:file { getattr open read };  # IMPOSSIBLE: the base
 #   policy carries 'neverallow authlogin_typeattr_1 shadow_t:file read' and
 #   staff_t is in that attribute - user domains may not read /etc/shadow in
@@ -231,7 +187,6 @@ allow staff_t self:process setexec;
 #   if a domain genuinely needs it.
 allow staff_t sysadm_t:key create;
 allow staff_t sysadm_t:process { noatsecure rlimitinh siginh transition };
-allow staff_t systemd_sessions_runtime_t:fifo_file write;
 getattr_files_pattern(staff_t, tor_initrc_exec_t, tor_initrc_exec_t)
 allow staff_t var_run_t:dir add_name;
 allow staff_t var_run_t:file { create open write };
@@ -239,31 +194,10 @@ allow staff_t wtmp_t:file write;
 allow staff_t xauth_t:process { noatsecure rlimitinh siginh };
 delete_files_pattern(staff_t, xauth_tmp_t, xauth_tmp_t)
 allow staff_t xserver_t:process { noatsecure rlimitinh };
-allow sysadm_t sysadm_screen_t:process { noatsecure rlimitinh siginh };
-allow xauth_t self:unix_dgram_socket create;
-read_files_pattern(local_login_t, shadow_t, shadow_t)
-allow local_login_t sysadm_t:process { noatsecure rlimitinh siginh };
 
-# steamwebhelper (Steam's CEF) writes to its own UDP socket bound to the mDNS
-# multicast address 224.0.0.251:5353 - 39 denials in a two-hour window. It is
-# self access on a socket the domain created itself, so it is granted here
-# rather than buried in a dontaudit.
-allow staff_bubblewrap_t self:udp_socket write;
 
-allow staff_t staff_git_t:process2 { nnp_transition nosuid_transition };
-allow staff_t ssh_t:process2 { nnp_transition nosuid_transition };
 allow staff_t devpts_t:chr_file { getattr open read write ioctl };
 kernel_read_psi(staff_t)
-
-# --- r16: the cheap leftovers, all cosmetic but all real ---
-# steamwebhelper statfs's the root fs inside the sandbox and gets nothing; the
-# sandbox already has fs_remount_all_fs, so a read-only statfs is within scope.
-fs_getattr_all_fs(staff_bubblewrap_t)
-# uptime/w count sessions from /run/systemd/sessions/<id>; refpolicy has no
-# interface for that file, so a raw read.
-read_files_pattern(staff_t, systemd_sessions_runtime_t, systemd_sessions_runtime_t)
-# admin tooling (sudo git / ss / ls) ioctl'ing a socket the session owns
-allow sysadm_t staff_t:unix_stream_socket ioctl;
 
 
 # --- r20d: the two live gaps in the session's own domain ---
@@ -286,6 +220,3 @@ allow staff_t user_home_dir_t:file { getattr read write };
 allow staff_t user_tmpfs_t:file { execute execute_no_trans };
 # `find` walking /proc/sys/kernel/irq (list_dirs_pattern's perms were missing)
 list_dirs_pattern(staff_t, sysctl_irq_t, sysctl_irq_t);
-# git reading ~/.local/share
-search_dirs_pattern(staff_git_t, xdg_data_t, xdg_data_t)
-read_lnk_files_pattern(staff_git_t, xdg_data_t, xdg_data_t)

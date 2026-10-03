@@ -39,6 +39,9 @@ gen_require(`
   class udp_socket { getattr node_bind };
   class unix_dgram_socket { create getattr ioctl sendto };
   class unix_stream_socket { getattr ioctl read write };
+  type default_t;
+  type local_login_t;
+  type shadow_t;
 ')
 
 # The user OpenRC session: PAM, pam_openrc, the runlevel engine and its state.
@@ -152,3 +155,65 @@ term_use_ptmx(utempter_t)
 # chkpwd is the PAM helper; it reads the kernel command line and /proc.
 kernel_getattr_proc(chkpwd_t)
 kernel_read_kernel_sysctls(chkpwd_t)
+
+# Appended from sec-policy/selinux-desktop-home (files/desktop.home.te).
+# The receiving module's gen_require block is NOT included or altered here.
+
+# staff_bubblewrap_t: the session sandbox. This module already owns that domain
+# (type staff_bubblewrap_t in its gen_require, and "allow staff_bubblewrap_t
+# user_bin_t:lnk_file read;" behind it), so the sandbox building itself and the
+# sockets it owns belong here, not in the home package.
+# NOTE: the home line for the setsched rule also carried a comment that explains
+# the session's own ptrace rule, which stays in the home base, so that comment is
+# not reproduced here (see report.txt, comment policy).
+allow staff_t staff_bubblewrap_t:process setsched;
+# --- the bubblewrap sandbox (this session runs inside one) ---
+# bwrap builds its sandbox by remounting /proc, /dev/pts, sysfs, bpf, configfs,
+# debugfs, tracefs, pstore, efivarfs, binfmt_misc...: ~200 remount denials in
+# one capture. If this is denied under enforcing the sandbox cannot be built.
+fs_remount_all_fs(staff_bubblewrap_t)
+# ...and it needs the controlling pty, plus xdg data links and to read its own
+# udp socket.
+term_use_ptmx(staff_bubblewrap_t)
+# steam's webhelper reads its own crash-dump settings under /tmp.
+userdom_read_user_tmp_files(staff_bubblewrap_t)
+# /proc/pressure: the sandbox reads pressure-stall info.
+kernel_read_psi(staff_bubblewrap_t)
+read_lnk_files_pattern(staff_bubblewrap_t, xdg_data_t, xdg_data_t)
+allow staff_bubblewrap_t self:udp_socket read;
+# steamwebhelper (Steam's CEF) writes to its own UDP socket bound to the mDNS
+# multicast address 224.0.0.251:5353 - 39 denials in a two-hour window. It is
+# self access on a socket the domain created itself, so it is granted here
+# rather than buried in a dontaudit.
+allow staff_bubblewrap_t self:udp_socket write;
+# --- r16: the cheap leftovers, all cosmetic but all real ---
+# steamwebhelper statfs's the root fs inside the sandbox and gets nothing; the
+# sandbox already has fs_remount_all_fs, so a read-only statfs is within scope.
+fs_getattr_all_fs(staff_bubblewrap_t)
+
+# local_login_t: PAM/login policy. This module owns the user session's PAM and
+# runlevel machinery (chkpwd_t is already in its gen_require), and none of this
+# concerns the user's home content.
+allow local_login_t chkpwd_t:process { noatsecure rlimitinh siginh };
+search_dirs_pattern(local_login_t, default_t, default_t)
+allow local_login_t self:capability net_admin;
+read_files_pattern(local_login_t, shadow_t, shadow_t)
+allow local_login_t sysadm_t:process { noatsecure rlimitinh siginh };
+
+# xauth_t: this module already declares xauth_t and owns the X authority socket
+# policy ("allow xauth_t self:unix_dgram_socket ioctl;"), so the create
+# permission on the same socket belongs beside it.
+allow xauth_t self:unix_dgram_socket create;
+
+# systemd_sessions_runtime_t: the session runtime under /run, not home content.
+# This module already declares the type and constrains it for udev.
+allow staff_t systemd_sessions_runtime_t:fifo_file write;
+# uptime/w count sessions from /run/systemd/sessions/<id>; refpolicy has no
+# interface for that file, so a raw read.
+read_files_pattern(staff_t, systemd_sessions_runtime_t, systemd_sessions_runtime_t)
+
+# sysadm_t -> staff_t unix socket: this module already carries the read/write
+# version of this exact pair ("allow sysadm_t staff_t:unix_stream_socket
+# { read write };" in the sesh note), so the ioctl permission belongs with it.
+# admin tooling (sudo git / ss / ls) ioctl'ing a socket the session owns
+allow sysadm_t staff_t:unix_stream_socket ioctl;

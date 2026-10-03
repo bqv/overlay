@@ -57,3 +57,12 @@ allow sysadm_t system_dbusd_t:process getcap;
 allow sysadm_t user_t:process getcap;
 
 getattr_files_pattern(sysadm_t, nsfs_t, nsfs_t)
+
+# Appended from sec-policy/selinux-desktop-home (files/desktop.home.te).
+# The receiving module's gen_require block is NOT included or altered here.
+
+# sysadm_screen_t: this module owns the screen domain derived from sysadm_t
+# ("The admin user's session: sysadm_t, and the screen domain derived from it";
+# type sysadm_screen_t in its gen_require, files_search_default at line 31), so
+# the transition permission on that pair belongs here.
+allow sysadm_t sysadm_screen_t:process { noatsecure rlimitinh siginh };
