@@ -1,0 +1,50 @@
+policy_module(desktop.home.gpg, 1.0)
+
+# GnuPG as a user runs it in their session: the keyring daemon, the agent, and the
+# terminal the passphrase prompt needs.
+#
+# These six rules were r29-r31 in desktop.system.base; r32 moved them here because
+# they are about a *user's* gpg - which is what the desktop.home modules are for -
+# and because base.te had by then accumulated gpg rules for three different
+# domains alongside grants for sshd, semanage, nginx and udev.
+#
+# What each rule is for:
+#
+#   connectto   GnuPG 2.4's keyboxd binds /run/user/<uid>/gnupg/S.keyboxd, and both
+#               it and the client run as gpg_t, so the client's connect() is a
+#               gpg_t -> gpg_t check that refpolicy's gpg module does not grant.
+#               Without it gpg2 retries the socket forever: 256 denials in three
+#               minutes while portage was verifying a repository signature.
+#
+#   watch       keyboxd has to see keyring changes, in its own runtime dir and in
+#               ~/.gnupg. `watch` only delivers inotify events for a directory; it
+#               grants no read, and keyboxd could see neither.
+#
+#   ptmx        gpg in a session runs as gpg_t (the transition off gpg_exec_t) and
+#               the passphrase path has to allocate a pty. gpg_agent_t and
+#               gpg_pinentry_t were denied the identical { read write } on
+#               /dev/ptmx, so all three carry the same set - exactly staff_t's own,
+#               and no wider.
+#
+#               refpolicy's user-terminal bundles are deliberately NOT used here:
+#               userdom_use_user_ptys grants user_devpts_t (the slave ptys,
+#               /dev/pts/N) plus term_list_ptys, not ptmx_t - the policy separates
+#               using a pty from allocating one - and this tree has no
+#               dev_rw_ptmx interface at all.
+#
+gen_require(`
+  type gpg_t;
+  type gpg_agent_t;
+  type gpg_pinentry_t;
+  type gpg_runtime_t;
+  type gpg_secret_t;
+  type ptmx_t;
+')
+
+allow gpg_t self:unix_stream_socket connectto;
+allow gpg_t gpg_runtime_t:dir watch;
+allow gpg_t gpg_secret_t:dir watch;
+
+allow gpg_t ptmx_t:chr_file rw_chr_file_perms;
+allow gpg_agent_t ptmx_t:chr_file rw_chr_file_perms;
+allow gpg_pinentry_t ptmx_t:chr_file rw_chr_file_perms;

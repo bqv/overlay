@@ -14,11 +14,6 @@ gen_require(`
   type initrc_exec_t;
   type rc_exec_t;
   type kvm_device_t;
-  type gpg_t;
-  type gpg_runtime_t;
-  type gpg_secret_t;
-  type gpg_agent_t;
-  type gpg_pinentry_t;
   type ptmx_t;
   type fonts_t;
   type xserver_tmpfs_t;
@@ -715,52 +710,6 @@ allow staff_t rc_exec_t:file { execute execute_no_trans getattr ioctl lock map o
 #     denied { fowner } for comm="checkpath"
 #     scontext=staff_u:staff_r:staff_t:s0-s0:c0.c1023 tclass=capability
 allow staff_t self:capability fowner;
-
-# r29: gpg-agent <-> keyboxd, and keyboxd watching its own keyring
-#
-# GnuPG 2.4 splits the keyring daemon out. keyboxd binds
-# /run/user/<uid>/gnupg/S.keyboxd and both it and the client run as gpg_t, so the
-# client's connect() is a gpg_t -> gpg_t check that refpolicy's gpg module does
-# not grant. Measured in a session while portage was verifying a repository
-# signature: 150 { connectto } denials in three minutes, i.e. wedged rather than
-# idle - gpg2 retries the socket. Alongside it, keyboxd's own { watch } on
-# /run/user/<uid>/gnupg (gpg_runtime_t) and ~/.gnupg (gpg_secret_t) was refused,
-# so the daemon cannot see keyring changes either. `watch` only delivers inotify
-# events for the directory; it grants no read.
-allow gpg_t self:unix_stream_socket connectto;
-allow gpg_t gpg_runtime_t:dir watch;
-allow gpg_t gpg_secret_t:dir watch;
-
-# r30: gpg in a user session needs a pty
-#
-# gpg in a session runs as gpg_t (the transition off gpg_exec_t), and gpg_t had no
-# access to ptmx_t at all, while staff_t and user_t both carry
-# { append getattr ioctl lock open read write } - 29 domains in this policy hold a
-# ptmx grant, so this is an omission rather than a deliberate confinement, and the
-# grant below mirrors staff_t's exactly.
-#
-# Seen as { read write } on /dev/ptmx nine times while portage verified a
-# signature, and once from a plain `gpg --list-keys`. A read does not need it -
-# that command returned 0 and resolved the key through keyboxd with the denial
-# present - but the path it is on is real: allocating a pty for a passphrase
-# prompt.
-allow gpg_t ptmx_t:chr_file rw_chr_file_perms;
-# (r31 widened this to the whole gpg family - see below.)
-
-# r31: the gpg family needs /dev/ptmx, not just gpg_t
-#
-# r30 granted ptmx_t to gpg_t, and the next session run denied the identical
-# { read write } on /dev/ptmx for gpg_agent_t - the agent that runs the passphrase
-# prompt - while gpg_pinentry_t had no ptmx access either. All three were in the
-# same hole, so a single-domain grant would have been whack-a-mole.
-#
-# The per-domain set is exactly staff_t's own ({ append getattr ioctl lock open
-# read write } = rw_chr_file_perms), which is the narrow thing that was actually
-# denied; refpolicy's user-terminal bundles are deliberately NOT used here,
-# because nothing on the tty/pts path has been observed to fail.
-allow gpg_t ptmx_t:chr_file rw_chr_file_perms;
-allow gpg_agent_t ptmx_t:chr_file rw_chr_file_perms;
-allow gpg_pinentry_t ptmx_t:chr_file rw_chr_file_perms;
 
 # Emulator / KVM
 #
