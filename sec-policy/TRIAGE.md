@@ -1507,3 +1507,63 @@ file at all, so every `stem` session had the same gap. See contexts.local.
   (/etc/pam.d/system-services), so `rc-service metalog start` prompts even under
   sudo -n, and three failed attempts lock the account (pam_faillock). Boot-time
   runlevel starts are not affected. Clear a lockout with `faillock --user X --reset`.
+
+### Addendum - what actually runs the session, and which layers were fatal
+
+pam_openrc does not exec openrc-user. It symlinks OpenRC's generic session
+service for the login and runs that:
+
+    /run/openrc/init.d/user.branch -> /etc/init.d/user      (openrc package)
+
+    /etc/init.d/user:
+      supervisor=supervise-daemon
+      user="${RC_SVCNAME#*.}"                    # branch
+      export userdir="$RC_SVCDIR/user/$user"     # /run/openrc/user/branch
+      command="/usr/libexec/rc/bin/openrc-user"
+      command_args="$user"                       # the username, NOT "start"
+      notify="fd:3"
+      respawn_max=3 ; respawn_period=5
+      start_pre() {
+        checkpath -d -m 0755 "$RC_SVCDIR/user"              # <- relabelfrom AVC
+        checkpath -d -m 0700 -o "$user:root" "$userdir"     # <- fowner AVC
+        return 0                                 # <- so neither is fatal
+      }
+
+The chain, with the contexts the 16:47:21 login's own audit records show:
+
+  greetd, from inittab                          system_u:system_r:xdm_t:s0
+   -> PAM session (greetd -> login -> system-local-login -> system-login)
+        pam_selinux.so multiple open            sets the exec context
+        pam_openrc.so                           execs /run/openrc/init.d/user.<login>
+   -> /etc/init.d/user under supervise-daemon   root uid, staff_u:staff_r:staff_t
+        start_pre()                             the two checkpath calls above
+   -> /usr/libexec/rc/bin/openrc-user <login>   root uid, staff_u:staff_r:staff_t
+        connect("/dev/log") = ENOENT -> exit 255        **FATAL - layer 1**
+   -> /usr/libexec/rc/sh/openrc-user.sh start           (only now reachable)
+        exec openrc --user boot                 EACCES rc_exec_t
+                                                        **FATAL - layer 2**
+
+Correction to layer 3 above: those two checkpath denials are NOT fatal -
+start_pre returns 0 regardless - and the lastlog lock is a pam_lastlog warning.
+They were real denials worth removing, but the fatal layers are 1 and 2. What
+layer 3 did do was hide the truth: with `openrc --user boot` never running, no
+service ever failed, so failed/ stayed empty and the only symptom was a runlevel
+that quietly did not exist.
+
+Harness fidelity, stated honestly. The identity is not an assumption: the audit
+shows openrc-user and checkpath at login running with uid=0 in
+staff_u:staff_r:staff_t:s0-s0:c0.c1023, and `sudo -r staff_r -t staff_t`
+reproduces exactly that. A PAM service carrying the same two pam_selinux lines
+plus pam_openrc, invoked in that identity, reproduces the chain as far as the
+syslog connect and fails there the same way. What no harness of mine can stand in
+for is greetd itself - nothing outside inittab runs as xdm_t. That stage is
+verified from the live session instead (startx, xinit, i3 and openrc-user all in
+staff_u:staff_r:staff_t) and from `getconlist staff_u system_u:system_r:xdm_t:s0`.
+
+Remaining link that only a boot can confirm: metalog must come up as syslogd_t.
+Its policy support is complete (syslogd_exec_t / devlog_t / syslogd_runtime_t
+fcontexts, type_transition syslogd_t device_t:sock_file devlog_t) and it ran on
+this box until August. The boot is the last unknown, but the connect becomes
+possible by construction: the peer socket will then be syslogd_t, for which
+`staff_t ... unix_dgram_socket sendto` is already granted (boolean
+user_all_users_send_syslog, currently on).
