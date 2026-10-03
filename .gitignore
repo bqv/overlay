@@ -23,3 +23,6 @@
 # cannot be parsed since eutils was removed from the tree; kept locally until it
 # is fixed (it also lacks a Manifest and three of the files it installs)
 /dev-java/openwebstart/
+
+# retired module backups: superseded content, already in git history
+/sec-policy/attic/

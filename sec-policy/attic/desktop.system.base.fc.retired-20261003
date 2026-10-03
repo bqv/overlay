@@ -1,7 +1,0 @@
-/usr/bin/agreety -- gen_context(system_u:object_r:xdm_exec_t,s0)
-/usr/bin/tuigreet -- gen_context(system_u:object_r:xdm_exec_t,s0)
-
-#/usr/bin/nvim -- gen_context(system_u:object_r:neovim_exec_t,s0)
-
-#/usr/bin/wireplumber -- gen_context(system_u:object_r:wireplumber_exec_t,s0)
-#/usr/bin/pipewire -- gen_context(system_u:object_r:pipewire_exec_t,s0)

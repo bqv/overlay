@@ -2,7 +2,7 @@
 
 This directory holds the design record from when the network labelling was still
 being worked out. That work is finished and deployed; the live state, the
-evidence and the open questions are in `../TRIAGE.md` and in
+evidence and the open questions are in the local TRIAGE ledger (not in this repository) and in
 `../selinux-desktop-system/files/{desktop.system.network.te,ruleset.nftables}`.
 
 Kept rather than deleted because `network-draft.te` records the two options that
@@ -44,7 +44,7 @@ than an ordering mistake:
   always run `nft -c` before `nft -f`.
 - Conntrack is never flushed: the TCP session carrying the agent's own web UI
   depends on it.
-- SELinux is permissive *now*, but see the boot note in `../TRIAGE.md`: OpenRC
+- SELinux is permissive *now*, but see the boot note in the local TRIAGE ledger (not in this repository): OpenRC
   applies `SELINUX=enforcing` from `/etc/selinux/config` at every boot, and the
   current permissive state is a leftover `setenforce 0`. A reboot therefore comes
   up enforcing.
