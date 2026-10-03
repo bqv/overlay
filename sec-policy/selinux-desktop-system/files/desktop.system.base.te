@@ -14,6 +14,9 @@ gen_require(`
   type initrc_exec_t;
   type rc_exec_t;
   type kvm_device_t;
+  type gpg_t;
+  type gpg_runtime_t;
+  type gpg_secret_t;
   type fonts_t;
   type xserver_tmpfs_t;
   type session_dbusd_runtime_t;
@@ -709,6 +712,21 @@ allow staff_t rc_exec_t:file { execute execute_no_trans getattr ioctl lock map o
 #     denied { fowner } for comm="checkpath"
 #     scontext=staff_u:staff_r:staff_t:s0-s0:c0.c1023 tclass=capability
 allow staff_t self:capability fowner;
+
+# r29: gpg-agent <-> keyboxd, and keyboxd watching its own keyring
+#
+# GnuPG 2.4 splits the keyring daemon out. keyboxd binds
+# /run/user/<uid>/gnupg/S.keyboxd and both it and the client run as gpg_t, so the
+# client's connect() is a gpg_t -> gpg_t check that refpolicy's gpg module does
+# not grant. Measured in a session while portage was verifying a repository
+# signature: 150 { connectto } denials in three minutes, i.e. wedged rather than
+# idle - gpg2 retries the socket. Alongside it, keyboxd's own { watch } on
+# /run/user/<uid>/gnupg (gpg_runtime_t) and ~/.gnupg (gpg_secret_t) was refused,
+# so the daemon cannot see keyring changes either. `watch` only delivers inotify
+# events for the directory; it grants no read.
+allow gpg_t self:unix_stream_socket connectto;
+allow gpg_t gpg_runtime_t:dir watch;
+allow gpg_t gpg_secret_t:dir watch;
 
 # Emulator / KVM
 #
