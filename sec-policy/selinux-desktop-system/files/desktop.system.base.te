@@ -17,6 +17,7 @@ gen_require(`
   type gpg_t;
   type gpg_runtime_t;
   type gpg_secret_t;
+  type ptmx_t;
   type fonts_t;
   type xserver_tmpfs_t;
   type session_dbusd_runtime_t;
@@ -727,6 +728,21 @@ allow staff_t self:capability fowner;
 allow gpg_t self:unix_stream_socket connectto;
 allow gpg_t gpg_runtime_t:dir watch;
 allow gpg_t gpg_secret_t:dir watch;
+
+# r30: gpg in a user session needs a pty
+#
+# gpg in a session runs as gpg_t (the transition off gpg_exec_t), and gpg_t had no
+# access to ptmx_t at all, while staff_t and user_t both carry
+# { append getattr ioctl lock open read write } - 29 domains in this policy hold a
+# ptmx grant, so this is an omission rather than a deliberate confinement, and the
+# grant below mirrors staff_t's exactly.
+#
+# Seen as { read write } on /dev/ptmx nine times while portage verified a
+# signature, and once from a plain `gpg --list-keys`. A read does not need it -
+# that command returned 0 and resolved the key through keyboxd with the denial
+# present - but the path it is on is real: allocating a pty for a passphrase
+# prompt.
+allow gpg_t ptmx_t:chr_file rw_chr_file_perms;
 
 # Emulator / KVM
 #
