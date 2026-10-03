@@ -1255,3 +1255,29 @@ Fifteen entries under /run currently carry a generic type. Fourteen of them are
 
 So the rule to carry forward: a generic type under /run is a defect only when a
 *confined* domain owns the path. Check the consumer, not the name.
+
+## The nftables ruleset is package-installed now, not hand-saved
+
+Applying the ruleset by hand and letting the distro service load a separately
+hand-saved `/var/lib/nftables/rules-save` is two copies of one ruleset with no
+mechanism between them, and it failed exactly that way: the savefile was three
+fixes behind the source. It had no `ct state untracked`, no `ct state invalid`
+and no source-port keying for replies - so a reboot would have loaded the old
+ruleset and silently reopened the LAN door, undoing r23/r24 and the reply fix
+without a word in any log.
+
+The ruleset now installs with the package (`src_install` in the ebuild) at
+`/usr/share/selinux/mcs/ruleset.nftables`, and `/etc/conf.d/nftables` sets
+`NFTABLES_SAVE` to that path with `SAVE_ON_STOP="no"`, so the boot loads the
+package file and nothing writes back over it. Verified: the installed file is
+byte-identical to the source, `nft -c -f` accepts it, and the running ruleset was
+reloaded from it (invalid 5, sport 4, untracked 3, zero drop/reject).
+
+Note the failure mode this closes: the nftables init script's `checkconfig()`
+*refuses to start* when `NFTABLES_SAVE` is missing, and no ruleset means no
+secmark on any packet - every packet arrives as unlabeled_t and every domain is
+denied. A bad path here is not a missing feature, it is a dead network.
+
+The nginx boolean moved into the same package's `pkg_postinst` beside the other
+`setsebool -P` calls, so a reinstall reproduces it instead of depending on the
+manual call recorded in `booleans.local`.

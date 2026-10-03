@@ -30,6 +30,20 @@ DEPEND="${DEPEND}
 RDEPEND="${DEPEND}
 "
 
+# The secmark ruleset is part of this policy, not a runtime artefact: the
+# packet types the modules grant only mean anything if something labels the
+# packets, and vice versa. It used to be applied by hand with `nft -f`, with
+# the boot loading a *separately* hand-saved /var/lib/nftables/rules-save -
+# two copies and nothing keeping them in step, which is exactly how they
+# drifted (the savefile silently lagged the source by three fixes). Installing
+# it here makes the repository the single source: the boot service loads this
+# file directly, and /etc/conf.d/nftables no longer saves over anything.
+src_install() {
+	selinux-policy-2_src_install
+	insinto /usr/share/selinux/mcs
+	newins "${FILESDIR}/ruleset.nftables" ruleset.nftables
+}
+
 pkg_postinst() {
 	selinux-policy-2_pkg_postinst
 	setsebool -P xserver_allow_dri true
@@ -38,4 +52,7 @@ pkg_postinst() {
 	setsebool -P systemd_tmpfiles_manage_all true
 	setsebool -P authlogin_pam true
 	setsebool -P authlogin_nsswitch_use_ldap true
+	# nginx binds :80 on the LAN addresses; without this the master cannot
+	# bind at all and the LAN door is gone (see booleans.local).
+	setsebool -P nginx_enable_http_server true
 }

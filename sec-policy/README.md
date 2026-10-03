@@ -91,6 +91,31 @@ Triage conventions, as practised in the existing modules:
 policy's `apps/pipewire.if` provides it, and m4 fails the home build with
 "duplicate definition".
 
+## The secmark ruleset ships with the policy
+
+`selinux-desktop-system/files/ruleset.nftables` gives every packet a secmark
+(`*_packet_t`). It is the other half of `desktop.system.network.te`: the packet
+types those rules grant only mean anything if something labels the packets, and
+labelling them is pointless if nothing may receive them. So they live in one
+package and are reviewed together.
+
+The ebuild installs the file at `/usr/share/selinux/mcs/ruleset.nftables`, and
+`/etc/conf.d/nftables` points `NFTABLES_SAVE` at that path with
+`SAVE_ON_STOP="no"`. A boot therefore loads exactly what the package installed,
+from the repository, and nothing writes back over it.
+
+That indirection is deliberate. Before this, the file was applied by hand with
+`nft -f` and the boot loaded a *separately* hand-saved
+`/var/lib/nftables/rules-save` — two copies of the same ruleset with nothing
+keeping them in step, and they drifted: the savefile was three fixes behind the
+source (no `untracked`, no `invalid`, no source-port keying) and a reboot would
+have silently reopened the LAN door. One source, one boot path.
+
+To check the installed copy is current, diff it against the source:
+
+    diff sec-policy/selinux-desktop-system/files/ruleset.nftables \
+         /usr/share/selinux/mcs/ruleset.nftables
+
 ## refpolicy
 
 `refpolicy/` is a pristine upstream tree, 2.20250213, kept **for reference
