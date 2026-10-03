@@ -15,3 +15,11 @@
 
 # pristine upstream refpolicy, reference only - pinned in sec-policy/README.md
 /sec-policy/refpolicy/
+
+# the policy ledger: kept on disk, deliberately not published (describes this
+# machine specifically)
+/sec-policy/TRIAGE.md
+
+# cannot be parsed since eutils was removed from the tree; kept locally until it
+# is fixed (it also lacks a Manifest and three of the files it installs)
+/dev-java/openwebstart/
