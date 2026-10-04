@@ -58,3 +58,18 @@ nginx_enable_http_server on
 #       setsebool -P gpg_manage_generic_user_content on
 #
 gpg_manage_generic_user_content on
+
+# gpg_agent_env_file = on
+#
+# A gpg homedir outside ~/.gnupg - `gpg --homedir ~/var/pigeon/gnupg --daemon`, i.e.
+# minting a key in a loose keyring - puts the keyring somewhere under $HOME, where
+# every directory on the path is user_home_t. gpg_agent_t may not search or write
+# those by default: the rules exist in refpolicy but are gated by this boolean, so the
+# agent could not reach its own keyring (32 denials in a quarter of an hour, one every
+# ~1.5 s, because gpg retries) and minting would fail on the first write.
+#
+# The alternative was a raw allow for the traversal alone, which is *not* enough: the
+# file create/write the operation needs is behind the same boolean. Turning it on gives
+# the agent manage rights on generic user content, which is what a user-chosen homedir
+# requires; gpg_manage_generic_user_content (already on) covers the other side.
+setsebool -P gpg_agent_env_file on

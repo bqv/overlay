@@ -71,4 +71,5 @@ allow gpg_pinentry_t ptmx_t:chr_file rw_chr_file_perms;
 # policy's own answer rather than a grant of my invention.
 gpg_stream_connect_agent(staff_t)
 
+
 dontaudit staff_t gpg_t:process { noatsecure rlimitinh siginh };
