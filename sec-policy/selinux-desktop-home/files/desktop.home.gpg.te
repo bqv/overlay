@@ -71,5 +71,17 @@ allow gpg_pinentry_t ptmx_t:chr_file rw_chr_file_perms;
 # policy's own answer rather than a grant of my invention.
 gpg_stream_connect_agent(staff_t)
 
+# A shell that runs with no_new_privs - the DSH tool sandbox does, so anything run
+# through it - execs gpg with NNP set, and SELinux then refuses the transition to
+# gpg_t unless nnp_transition is granted. The denial does not stop gpg: it runs, but
+# as staff_t, i.e. with the session's much wider access instead of gpg's own. Granting
+# this restores the confinement rather than loosening it, which is why it is worth
+# having even though nothing appears to fail.
+#
+# all_process2_perms is refpolicy's own { nnp_transition nosuid_transition } - the same
+# set bubblewrap.if and misc_patterns.spt use for this.
+allow staff_t gpg_t:process2 all_process2_perms;
+allow staff_t gpg_agent_t:process2 all_process2_perms;
+
 
 dontaudit staff_t gpg_t:process { noatsecure rlimitinh siginh };
