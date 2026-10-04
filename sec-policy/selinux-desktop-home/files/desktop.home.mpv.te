@@ -1,10 +1,18 @@
 policy_module(desktop.home.mpv, 1.0)
 
 gen_require(`
+  type boolean_t;
   type mplayer_t;
   type staff_t;
+  type user_runtime_t;
+  type xserver_t;
+  type xserver_tmpfs_t;
+  class fd use;
+  class file { map read write };
   class process { execmem };
   class process2 { nnp_transition nosuid_transition };
+  class sock_file write;
+  class unix_dgram_socket sendto;
 ')
 
 # mpv v0.41 is LuaJIT-skinned - ldd shows libluajit-5.1 - and its default scripts each
@@ -14,14 +22,46 @@ gen_require(`
 # blaming "the OSC" was wrong.
 #
 # Scoped to mplayer_t rather than the global allow_execmem boolean, exactly as the java_t
-# rule does for the JVM's JIT. mpv is the only thing this domain runs.
+# rule does for the JVM JIT. mpv is the only thing this domain runs.
 allow mplayer_t self:process execmem;
 
 # ...and the sandboxed case. With no_new_privs set - which the DSH tool sandbox always
 # does - SELinux refuses the staff_t -> mplayer_t transition unless nnp_transition is
-# granted, so `timeout mpv ...` runs as staff_t instead: a wider domain that has no
-# execmem either, so it fails both ways. Granting this restores the confinement rather
+# granted, so a timeout-wrapped mpv runs as staff_t instead: a wider domain that has no
+# execmem either, so it failed both ways. Granting this restores the confinement rather
 # than loosening it, the same argument as the gpg and java rules.
 #
-# all_process2_perms is refpolicy's own { nnp_transition nosuid_transition }.
+# all_process2_perms is refpolicy own { nnp_transition nosuid_transition }.
 allow staff_t mplayer_t:process2 all_process2_perms;
+
+# --- r25: the GUI client set ---
+#
+# With execmem granted, mpv got past the LuaJIT wall and was then denied every client path
+# a desktop application needs: sendto on the X socket, write on the NVIDIA driver shared
+# memfd, session and system D-Bus sockets, the pipewire socket, and libplacebo shader
+# cache under ~/.cache.
+#
+# refpolicy builds an X domain template for this domain (xserver_user_x_domain_template,
+# mplayer.te:235) and it grants fd use on xserver_t - but nothing else this mpv needs, and
+# the denials above name exactly what is missing. So the set below is local, and it is the
+# same set desktop.home.shortwave carries, a GUI application that works on this box, rather
+# than a guess at what a media player might need. (No backticks in these comments: m4 uses
+# them as quote characters, and an unmatched one eats the rest of the file.)
+allow mplayer_t xserver_t:unix_dgram_socket sendto;
+allow mplayer_t xserver_tmpfs_t:file { map read write };
+xserver_read_user_xauth(mplayer_t)
+xserver_stream_connect(mplayer_t)
+xserver_use_user_fonts(mplayer_t)
+dbus_list_system_bus_runtime(mplayer_t)
+dbus_rw_session_tmp_sockets(mplayer_t)
+dbus_send_system_bus(mplayer_t)
+dbus_system_bus_client(mplayer_t)
+pipewire_play(mplayer_t)
+xdg_manage_cache(mplayer_t)
+# pipewire socket carries user_runtime_t here, not a pipewire type - the denial named
+# /run/user/1000/pipewire-0 directly - and shortwave carries the same one-line grant.
+allow mplayer_t user_runtime_t:sock_file write;
+# libplacebo, and the NVIDIA blob behind it, read the allow_execmem boolean to decide
+# whether runtime shader compilation is permitted. A boolean value is not a privilege -
+# getsebool works for any user - and without this read the VO path cannot tell.
+allow mplayer_t boolean_t:file read;
