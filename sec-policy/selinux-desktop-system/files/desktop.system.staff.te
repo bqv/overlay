@@ -32,13 +32,14 @@ gen_require(`
   type user_home_t;
   type user_runtime_t;
   type user_tmpfs_t;
+  type usr_t;
   type utempter_t;
   type xdg_config_t;
   attribute domain;
   class chr_file map;
-  class dir { create getattr open read relabelfrom relabelto search };
+  class dir { create getattr open read relabelfrom relabelto search watch };
   class fifo_file { getattr ioctl open read unlink write };
-  class file { create getattr map open read relabelfrom relabelto unlink write };
+  class file { create execmod getattr map open read relabelfrom relabelto unlink watch write };
   class filesystem { associate getattr };
   class netlink_generic_socket { bind create getattr read setopt write };
   class netlink_tcpdiag_socket { bind create getattr nlmsg_read read setopt write };
@@ -199,3 +200,23 @@ gnome_read_keyring_home_files(staff_gkeyringd_t)
 # { nnp_transition nosuid_transition };"), and its gen_require already declares
 # both ssh_t and staff_t. See report.txt for the alternative destination.
 allow staff_t ssh_t:process2 { nnp_transition nosuid_transition };
+
+# --- r29: the QML tooling (dsh-native) ---
+#
+# Two denials, both from a session process doing something ordinary.
+#
+# dsh-native watches its installed QML for live reload: inotify_add_watch needs the watch
+# permission on the file, which is a notification and grants no read at all. The same app
+# also runs with --qml /home/user/var/work/dsh-linux/qml, so the home tree gets the same
+# treatment - that invocation is in the audit record, not a guess.
+#
+# Qt's QML engine JITs: it writes a memfd and then mprotects it PROT_READ|PROT_EXEC, which
+# SELinux gates with execmod. Here the memfd carries user_tmpfs_t (a session process's
+# memfd gets the user's own tmpfs type, unlike pipewire's, which carries plain tmpfs_t), and
+# staff_t already had execute and execute_no_trans on it - this only adds the W^X relaxation
+# for memory the session itself wrote. The global allow_execmod boolean stays OFF: it would
+# grant file_type:file execmod to files_unconfined_type, which is every file type.
+# The home tree needs no line here: adding one moved no capability, because staff_t already
+# has watch on user_home_t from the userdomain interfaces.
+allow staff_t usr_t:file watch;
+allow staff_t user_tmpfs_t:file execmod;
