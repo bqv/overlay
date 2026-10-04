@@ -7,7 +7,7 @@ IUSE=""
 MODS="desktop.system.staff desktop.system.sysadm desktop.system.session
 	desktop.system.nginx desktop.system.remote desktop.system.portage
 	desktop.system.selinux desktop.system.tools desktop.system.boot
-	desktop.system.greet desktop.system.mosh desktop.system.users
+	desktop.system.greet desktop.system.mosh
 	desktop.system.network"
 BASEPOL="2.20250213-r1"
 POLICY_FILES="
@@ -22,7 +22,6 @@ POLICY_FILES="
 	desktop.system.boot.te
 	desktop.system.greet.te desktop.system.greet.fc
 	desktop.system.mosh.if desktop.system.mosh.te desktop.system.mosh.fc
-	desktop.system.users.cil
 	desktop.system.network.fc desktop.system.network.te
 "
 POLICY_TYPES="mcs"
