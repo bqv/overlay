@@ -3,15 +3,24 @@ policy_module(desktop.system.nginx, 1.0)
 gen_require(`
   type httpd_cache_t;
   type nginx_t;
-  class dir { create getattr open read relabelfrom relabelto search };
-  class file { create getattr map open read relabelfrom relabelto unlink write };
+  class dir { add_name create getattr ioctl link lock open read remove_name rename reparent rmdir search setattr unlink write };
+  class file { append create getattr ioctl link lock map open read rename setattr unlink write };
 ')
 
 # nginx serving :80 and proxying to the local gate on :8080. Method and evidence: the local TRIAGE ledger, which is kept out of this repository.
 
-# nginx's proxy cache: httpd_cache_t is apache's and its interfaces grant a different mix.
-allow nginx_t httpd_cache_t:dir { add_name remove_name search };
-allow nginx_t httpd_cache_t:file { create open read unlink write };
-
-# r21b: nginx's cache getattr, from the enforcing boot.
-allow nginx_t httpd_cache_t:dir getattr;
+# nginx's request-body and proxy cache. httpd_cache_t is apache's type, and apache's
+# interfaces do not fit: apache_rw_cache_files is file-only and apache_list_cache is
+# list_dirs_pattern, neither of which writes into the directory. So the set below is
+# taken from apache's own treatment of the same type - apache.te:380-382,
+# manage_dirs_pattern and mmap_manage_files_pattern for httpd_t - not invented here. It
+# absorbs the earlier r21b getattr grant.
+#
+# r22: a request body larger than nginx's in-memory buffer is spilled to
+# /var/cache/nginx/client_body_temp. The dir grant had add_name but not write, so nginx
+# got EACCES on open(O_RDWR|O_CREAT|O_EXCL) and answered 500 - while a body small enough
+# to stay in memory passed straight through. From outside that reads as "file uploads
+# are broken", which is how it was reported. proxy_temp and the other temp dirs share
+# the type, so one set covers them all.
+allow nginx_t httpd_cache_t:dir { add_name create getattr ioctl link lock open read remove_name rename reparent rmdir search setattr unlink write };
+allow nginx_t httpd_cache_t:file { append create getattr ioctl link lock map open read rename setattr unlink write };
