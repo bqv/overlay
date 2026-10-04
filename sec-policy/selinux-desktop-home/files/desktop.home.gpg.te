@@ -41,6 +41,7 @@ gen_require(`
   type gpg_t;
   type ptmx_t;
   type staff_t;
+  type user_tmp_t;
   class chr_file { getattr ioctl open read write };
   class dir { add_name create getattr mounton open read remove_name search relabelfrom relabelto };
   class process { execmem getcap noatsecure ptrace rlimitinh setexec setsched siginh transition };
@@ -50,6 +51,19 @@ gen_require(`
 allow gpg_t self:unix_stream_socket connectto;
 allow gpg_t gpg_runtime_t:dir watch;
 allow gpg_t gpg_secret_t:dir watch;
+
+# r34: /run/user/<uid>/gnupg has to be BORN as gpg_runtime_t.
+#
+# Nothing types this directory at creation - refpolicy's only user_tmp_t:dir transitions
+# are alsa, gconfd, httpd and mozilla_plugin - and the creator is not gpg itself: gpgconf
+# runs as staff_t (gpg_agent_t and gpg_t have no access to user_tmp_t at all), and
+# `gpgconf --launch`, which the session's gpg-agent supervisor uses as its health probe,
+# is what creates it. So it inherited the parent's user_tmp_t and every rule in this
+# module about gpg_runtime_t went dead: the agent could not even stat its own socket
+# directory, and the supervisor restarted it every few seconds all afternoon - 1590
+# identical { getattr } denials, and no agent at all. matchpathcon already declares
+# gpg_runtime_t for this path; only the creation-time transition was missing.
+filetrans_pattern(staff_t, user_tmp_t, gpg_runtime_t, dir, "gnupg")
 
 allow gpg_t ptmx_t:chr_file rw_chr_file_perms;
 allow gpg_agent_t ptmx_t:chr_file rw_chr_file_perms;

@@ -1,0 +1,27 @@
+policy_module(desktop.home.mpv, 1.0)
+
+gen_require(`
+  type mplayer_t;
+  type staff_t;
+  class process { execmem };
+  class process2 { nnp_transition nosuid_transition };
+')
+
+# mpv v0.41 is LuaJIT-skinned - ldd shows libluajit-5.1 - and its default scripts each
+# compile Lua and then mprotect the result PROT_READ|PROT_EXEC. SELinux gates that with
+# execmem, so the scripts die one after another and playback fails: lua/osc at 17:50 and
+# lua/stats at 18:11 were the same permission on two different scripts, which is why
+# blaming "the OSC" was wrong.
+#
+# Scoped to mplayer_t rather than the global allow_execmem boolean, exactly as the java_t
+# rule does for the JVM's JIT. mpv is the only thing this domain runs.
+allow mplayer_t self:process execmem;
+
+# ...and the sandboxed case. With no_new_privs set - which the DSH tool sandbox always
+# does - SELinux refuses the staff_t -> mplayer_t transition unless nnp_transition is
+# granted, so `timeout mpv ...` runs as staff_t instead: a wider domain that has no
+# execmem either, so it fails both ways. Granting this restores the confinement rather
+# than loosening it, the same argument as the gpg and java rules.
+#
+# all_process2_perms is refpolicy's own { nnp_transition nosuid_transition }.
+allow staff_t mplayer_t:process2 all_process2_perms;
