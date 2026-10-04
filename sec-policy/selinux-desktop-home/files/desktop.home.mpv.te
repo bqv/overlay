@@ -5,11 +5,13 @@ gen_require(`
   type mplayer_t;
   type pipewire_t;
   type staff_t;
+  type tmpfs_t;
   type user_runtime_t;
   type xserver_t;
   type xserver_tmpfs_t;
   class fd use;
-  class file { map open read write };
+  class dir search;
+  class file { append getattr ioctl lock map open read write };
   class process { execmem setrlimit };
   class process2 { nnp_transition nosuid_transition };
   class sock_file write;
@@ -90,3 +92,15 @@ allow mplayer_t pipewire_t:fd use;
 # so the failing request is the design rather than a fault. Silenced, not granted, and that
 # is upstream's judgement rather than mine.
 dontaudit mplayer_t self:process setrlimit;
+
+# --- r27: pipewire's memfd ---
+#
+# pipewire hands the client a buffer over SCM_RIGHTS. The descriptor arrives under
+# pipewire_t (r26 grants fd use) and the buffer itself is a plain tmpfs_t file, so the write
+# is checked against tmpfs_t. refpolicy does not type these - there is no pipewire_tmpfs_t
+# and no transition out of pipewire_t - and the box's working audio clients carry plain
+# tmpfs_t grants: mozilla_t from refpolicy, crow_t and gajim_t from this tree, both via
+# manage_files_pattern. This pair is the narrower macro form for a client that only reads
+# and writes a buffer it was handed, without create, unlink or rename.
+rw_files_pattern(mplayer_t, tmpfs_t, tmpfs_t)
+mmap_read_files_pattern(mplayer_t, tmpfs_t, tmpfs_t)
