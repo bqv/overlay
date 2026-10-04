@@ -11,6 +11,7 @@ gen_require(`
   type proc_psi_t;
   type rc_exec_t;
   type rtkit_daemon_t;
+  type selinux_config_t;
   type staff_bubblewrap_t;
   type staff_t;
   type sysadm_t;
@@ -190,6 +191,14 @@ allow staff_bubblewrap_t self:udp_socket write;
 # steamwebhelper statfs's the root fs inside the sandbox and gets nothing; the
 # sandbox already has fs_remount_all_fs, so a read-only statfs is within scope.
 fs_getattr_all_fs(staff_bubblewrap_t)
+# r23: the sandbox's own SELinux probe, granted instead of silenced. refpolicy's
+# bubblewrap module dontaudits this pair for every per-role bubblewrap domain, so
+# bwrap's attempt to read /etc/selinux (libselinux wants the policy type before it will
+# answer anything about SELinux) failed silently and read as "the sandbox cannot see
+# that SELinux is on". The dir set is the one the dontaudit named; the file set drops
+# its ioctl and lock, which reading a regular file does not need.
+allow staff_bubblewrap_t selinux_config_t:dir { getattr open search };
+allow staff_bubblewrap_t selinux_config_t:file { getattr open read };
 
 # local_login_t: PAM/login policy. This module owns the user session's PAM and
 # runlevel machinery (chkpwd_t is already in its gen_require), and none of this

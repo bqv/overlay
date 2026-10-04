@@ -116,6 +116,16 @@ userdom_manage_user_bin(staff_git_t)
 # variant would cover every home content type). One precise allow.
 mmap_read_files_pattern(staff_git_t, user_bin_t, user_bin_t)
 term_use_ptmx(staff_git_t)
+# r23: git reads a file it is handed in /tmp inside the session sandbox, and the private
+# tmpfs there is user_tmpfs_t, not user_tmp_t - so userdom_read_user_tmp_files (already
+# used for staff_bubblewrap_t) never covered it. Observed as
+#   avc: denied { read } comm=git tcontext=user_tmpfs_t tclass=file
+# then denied { open }, then denied { getattr } on the same file: reading it needs all
+# three, measured one permission at a time rather than guessed.
+# from `git hash-object /tmp/m.txt`, and from outside as
+#   fatal: could not read log file '/tmp/msg.txt'  (git commit -F /tmp/msg.txt).
+# staff_t has the read by attribute membership; the per-role domains do not.
+allow staff_git_t user_tmpfs_t:file { getattr open read };
 # Reading the overlay as the session user (editing policy, inspecting ebuilds): without it
 # the policy cannot be maintained as staff_t under enforcing.
 portage_read_ebuild(staff_t)
