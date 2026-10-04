@@ -83,6 +83,8 @@ allow mplayer_t boolean_t:file { open read };
 # exactly those two permissions; dbus_system_bus_client, already called above, grants only
 # send_msg in each direction, which is why neither came for free.
 dbus_write_session_runtime_socket(mplayer_t)
+# ...and the stat that precedes connecting to it; the dbus module names this one too.
+dbus_getattr_session_runtime_socket(mplayer_t)
 dbus_connect_system_bus(mplayer_t)
 # pipewire passes the client a memfd over SCM_RIGHTS, so the client must be allowed to use
 # a descriptor it receives from pipewire_t. wireplumber carries the same single rule.
