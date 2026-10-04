@@ -3,13 +3,14 @@ policy_module(desktop.home.mpv, 1.0)
 gen_require(`
   type boolean_t;
   type mplayer_t;
+  type pipewire_t;
   type staff_t;
   type user_runtime_t;
   type xserver_t;
   type xserver_tmpfs_t;
   class fd use;
-  class file { map read write };
-  class process { execmem };
+  class file { map open read write };
+  class process { execmem setrlimit };
   class process2 { nnp_transition nosuid_transition };
   class sock_file write;
   class unix_dgram_socket sendto;
@@ -64,4 +65,28 @@ allow mplayer_t user_runtime_t:sock_file write;
 # libplacebo, and the NVIDIA blob behind it, read the allow_execmem boolean to decide
 # whether runtime shader compilation is permitted. A boolean value is not a privilege -
 # getsebool works for any user - and without this read the VO path cannot tell.
-allow mplayer_t boolean_t:file read;
+allow mplayer_t boolean_t:file { open read };
+
+# --- r26: the audio and bus paths a real session uses ---
+#
+# r25 was verified with audio off and no session bus, so these were never exercised; the
+# owner's own run at 18:33 hit all of them. The boolean line above is the same lesson at
+# close range: r25 granted read because one AVC named read, and the next real run asked for
+# open as well. One AVC names the permission the kernel stopped at, not the set.
+#
+# The boolean read stays raw - refpolicy wraps that type only for SETTING booleans, inside
+# selinux_set_generic_booleans - and it is now open beside read.
+#
+# The session bus socket and the system bus name use the dbus module's own interfaces for
+# exactly those two permissions; dbus_system_bus_client, already called above, grants only
+# send_msg in each direction, which is why neither came for free.
+dbus_write_session_runtime_socket(mplayer_t)
+dbus_connect_system_bus(mplayer_t)
+# pipewire passes the client a memfd over SCM_RIGHTS, so the client must be allowed to use
+# a descriptor it receives from pipewire_t. wireplumber carries the same single rule.
+allow mplayer_t pipewire_t:fd use;
+# module-rt asks for an RT rlimit before falling back to rtkit. refpolicy silences exactly
+# this request for user domains (userdomain.if:988, dontaudit $1_t self:process setrlimit),
+# so the failing request is the design rather than a fault. Silenced, not granted, and that
+# is upstream's judgement rather than mine.
+dontaudit mplayer_t self:process setrlimit;
