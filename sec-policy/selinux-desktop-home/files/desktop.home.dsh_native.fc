@@ -1,2 +1,7 @@
 /usr/bin/dsh-native		--	gen_context(system_u:object_r:dsh_native_exec_t,s0)
 /usr/share/dsh-native(/.*)?		gen_context(system_u:object_r:dsh_native_qml_t,s0)
+# HOME_DIR, not a literal /home/... path: home contexts are generated per user into
+# file_contexts.homedirs by genhomedircon, which only expands the HOME_DIR template. A
+# literal path lands in the general file_contexts and is then overridden by the per-user
+# entry, which is exactly what happened on the first attempt.
+HOME_DIR/var/work/dsh-linux/qml(/.*)?		gen_context(system_u:object_r:dsh_native_qml_t,s0)

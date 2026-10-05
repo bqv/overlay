@@ -1,10 +1,10 @@
 policy_module(desktop.home.dsh_native, 1.0)
 
 gen_require(`
+	attribute user_home_content_type;
 	role staff_r;
 	type staff_t;
 	type tmpfs_t;
-	type user_home_t;
 	type user_runtime_t;
 	type user_tmp_t;
 	type xserver_t;
@@ -40,6 +40,10 @@ type_transition dsh_native_t tmpfs_t:file dsh_native_tmpfs_t;
 # their own instead of sitting in usr_t, and the live-reload watch stays inside that tree.
 type dsh_native_qml_t;
 files_type(dsh_native_qml_t)
+# user_home_content_type is the attribute user_home_t carries and the userdomain rules
+# key on, so keeping it means retyping the work-tree QML does not cost the session its own
+# access to files it edits.
+typeattribute dsh_native_qml_t user_home_content_type;
 
 ########################################
 #
@@ -64,10 +68,18 @@ dsh_native_run(staff_t, staff_r)
 # grants no read, and it is scoped to this package's own tree rather than usr_t.
 allow dsh_native_t dsh_native_qml_t:file { getattr map open read watch };
 allow dsh_native_t dsh_native_qml_t:dir { getattr open read search watch };
-# Run with --qml <work tree> it watches a second copy under the home directory; that
-# invocation is in the audit record for this application, not a guess.
-allow dsh_native_t user_home_t:file watch;
-allow dsh_native_t user_home_t:dir watch;
+# The work-tree QML carries the same type (see the fc entry), so the grants above cover the
+# --qml case without opening the whole home directory to this domain. The session watches it
+# too, so a reload watcher run by hand from the work tree behaves the same way.
+# Measured, not assumed: the userdomain rules keyed on user_home_content_type do NOT cover
+# staff_t (this file_type attribute alone left it with watch and nothing else), so the session
+# access to these files is stated here. It mirrors what staff_t holds on user_home_t: manage,
+# which is what an editor needs - create, rename and unlink included, because editors save by
+# replacing - plus the watch that r29 added to user_home_t.
+manage_dirs_pattern(staff_t, dsh_native_qml_t, dsh_native_qml_t)
+manage_files_pattern(staff_t, dsh_native_qml_t, dsh_native_qml_t)
+allow staff_t dsh_native_qml_t:dir watch;
+allow staff_t dsh_native_qml_t:file watch;
 # Its JIT buffers: map in, write, and execute what it wrote itself, and nothing else.
 allow dsh_native_t dsh_native_tmpfs_t:file { mmap_rw_file_perms execmod };
 
