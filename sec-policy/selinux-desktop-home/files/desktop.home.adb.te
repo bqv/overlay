@@ -1,0 +1,77 @@
+policy_module(desktop.home.adb, 1.0)
+
+gen_require(`
+	type android_tools_t;
+	type staff_t;
+	type dynamic_packet_t;
+	type mdns_packet_t;
+	type local_packet_t;
+	type adb_client_packet_t;
+	type user_tmp_t;
+')
+
+# r35: adb runs in refpolicy's own android_tools_t domain, not in staff_t.
+#
+# refpolicy labels android_tools_exec_t for /opt/android-sdk-update-manager/platform-tools/adb;
+# this box SDK lives at /opt/android-sdk/platform-tools/adb, so the fcontext in the .fc here
+# never matched, adb inherited staff_t, and the USB device access had to be granted to the
+# whole session - including the nodes for the keyboard and mouse. Labelling the real path puts
+# adb back in the domain that already holds usb_device_t itself, and staff_t goes back to
+# having nothing on /dev/bus/usb.
+#
+# android_tools_domtrans is refpolicy's own entry, which also grants the entrypoint on the
+# exec type. staff_t already had the transition itself.
+android_tools_domtrans(staff_t)
+
+# android_tools_t reads and writes usb_device_t but does NOT watch the bus directories, so a
+# phone plugged in after the server started was never noticed - which is exactly the reported
+# symptom. dev_watch_dev_dirs is the policy own interface for that watch.
+dev_watch_dev_dirs(android_tools_t)
+
+# --- r35b: what the shipped domain lacks, collected from one run of the real thing ---
+#
+# A permissive window on android_tools_t, one adb start, then ausearch. Every line names a
+# denial the run produced. staff_t had all of this; the domain transition took it away:
+#
+#   /tmp/adb.<uid>.log    append create getattr open read write   (the server ABORTS without
+#                         it: "cannot open /tmp/adb.1000.log: Permission denied", so this one
+#                         is not cosmetic)
+#   /usr/share/zoneinfo   read    (why its log timestamps came out in UTC)
+#   /dev/urandom          read
+#   /dev/ptmx             read write
+#   UDP 5353 + node bind  adb's own mDNS, alongside the adb-wireless service
+#   unassigned TCP ports  the emulator scan, which is why it wants 5555 and friends
+#   netlink uevent socket udev-style hotplug, alongside libusb's /dev/bus/usb watch
+userdom_write_user_tmp_files(android_tools_t)
+allow android_tools_t user_tmp_t:file read;
+miscfiles_read_localization(android_tools_t)
+dev_read_urand(android_tools_t)
+term_use_ptmx(android_tools_t)
+corenet_udp_bind_howl_port(android_tools_t)
+corenet_udp_bind_generic_node(android_tools_t)
+corenet_tcp_connect_all_unreserved_ports(android_tools_t)
+udev_create_kobject_uevent_sockets(android_tools_t)
+
+# --- r35c: the packet-level grants and the uevent socket, from the same window ---
+#
+# adb finds devices over mDNS (mdns_packet_t, multicast to 224.0.0.251 on both the wired and
+# wireless interfaces), talks to its own server over loopback (adb_client_packet_t - this box
+# own type for exactly that, from the network module - plus local_packet_t for the emulator
+# scan around 5555), and uses a netlink uevent socket for udev-style hotplug alongside libusb
+# watch of /dev/bus/usb.
+#
+# udev_create_kobject_uevent_sockets granted nothing for this domain - verified by asking
+# sesearch what it actually put in place, which came back empty - so the socket permissions
+# are stated directly from the denials instead of trusting the interface name.
+allow android_tools_t self:netlink_kobject_uevent_socket { bind create getattr read setopt };
+allow android_tools_t local_packet_t:packet { send recv };
+allow android_tools_t adb_client_packet_t:packet { send recv };
+allow android_tools_t mdns_packet_t:packet { send recv };
+# create as well: /tmp is tmpfs, so after a reboot the log is gone and the server has to make
+# it again. The same trap the gpg socket directory had.
+allow android_tools_t user_tmp_t:file create;
+
+# The wireless half: adb reaches the phone over TCP (192.168.1.110 -> the phone's port), and
+# those packets carry this box own dynamic_packet_t - the type the network module uses instead
+# of leaving dynamically-classified traffic unlabelled.
+allow android_tools_t dynamic_packet_t:packet { send recv };

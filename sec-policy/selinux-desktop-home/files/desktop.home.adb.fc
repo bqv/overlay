@@ -1,0 +1,3 @@
+/opt/android-sdk/platform-tools/adb		--	gen_context(system_u:object_r:android_tools_exec_t,s0)
+# The rest of the SDK stays bin_t: fastboot needs the same treatment if it is ever used
+# against a USB device, but nothing has measured that yet.

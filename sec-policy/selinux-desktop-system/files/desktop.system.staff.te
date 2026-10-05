@@ -220,3 +220,10 @@ allow staff_t ssh_t:process2 { nnp_transition nosuid_transition };
 # has watch on user_home_t from the userdomain interfaces.
 allow staff_t usr_t:file watch;
 allow staff_t user_tmpfs_t:file execmod;
+
+# --- r35: adb and USB devices --- moved to its own domain ---
+#
+# adb was granted the USB watch and device-node write here, for the whole session. It now runs
+# in refpolicy's android_tools_t instead (see desktop.home.adb), which already holds the device
+# access, so staff_t keeps nothing on /dev/bus/usb: the grant had also covered the nodes
+# belonging to the keyboard and mouse.
