@@ -1,0 +1,96 @@
+
+## <summary>policy for dsh-native</summary>
+
+########################################
+## <summary>
+##	Execute dsh-native in the dsh_native domain.
+## </summary>
+## <param name="domain">
+## <summary>
+##	Domain allowed to transition.
+## </summary>
+## </param>
+#
+interface(`dsh_native_domtrans',`
+	gen_require(`
+		type dsh_native_t, dsh_native_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	domtrans_pattern($1, dsh_native_exec_t, dsh_native_t)
+	allow $1 dsh_native_t:process { noatsecure };
+')
+
+######################################
+## <summary>
+##	Execute dsh-native in the caller domain.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed access.
+##	</summary>
+## </param>
+#
+interface(`dsh_native_exec',`
+	gen_require(`
+		type dsh_native_exec_t;
+	')
+
+	corecmd_search_bin($1)
+	can_exec($1, dsh_native_exec_t)
+')
+
+########################################
+## <summary>
+##	Execute dsh-native in the dsh_native domain, and
+##	allow the specified role the dsh_native domain.
+## </summary>
+## <param name="domain">
+## <summary>
+##	Domain allowed to transition
+##	</summary>
+## </param>
+## <param name="role">
+## <summary>
+##	The role to be allowed the dsh_native domain.
+## </summary>
+## </param>
+#
+interface(`dsh_native_run',`
+	gen_require(`
+		type dsh_native_t;
+		attribute_role dsh_native_roles;
+	')
+
+	dsh_native_domtrans($1)
+	roleattribute $2 dsh_native_roles;
+')
+
+########################################
+## <summary>
+##	Role access for dsh-native
+## </summary>
+## <param name="role">
+## <summary>
+##	Role allowed access
+##	</summary>
+## </param>
+## <param name="domain">
+## <summary>
+##	User domain for the role
+##	</summary>
+## </param>
+#
+interface(`dsh_native_role',`
+	gen_require(`
+		type dsh_native_t;
+		attribute_role dsh_native_roles;
+	')
+
+	roleattribute $1 dsh_native_roles;
+
+	dsh_native_domtrans($2)
+
+	ps_process_pattern($2, dsh_native_t)
+	allow $2 dsh_native_t:process { signull signal sigkill };
+')

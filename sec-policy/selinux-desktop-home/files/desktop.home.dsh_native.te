@@ -1,0 +1,109 @@
+policy_module(desktop.home.dsh_native, 1.0)
+
+gen_require(`
+	role staff_r;
+	type staff_t;
+	type tmpfs_t;
+	type user_home_t;
+	type user_runtime_t;
+	type user_tmp_t;
+	type xserver_t;
+	type xserver_tmpfs_t;
+')
+
+########################################
+#
+# Declarations
+#
+
+attribute_role dsh_native_roles;
+roleattribute system_r dsh_native_roles;
+
+type dsh_native_t;
+type dsh_native_exec_t;
+application_domain(dsh_native_t, dsh_native_exec_t)
+role dsh_native_roles types dsh_native_t;
+
+# r30: its own JIT memory. Qt's QML engine writes a memfd and mprotects it executable;
+# execmod is the permission for modified FILE-backed memory, and it is the risky member of
+# the W^X trio. Giving this domain a tmpfs type of its own keeps that permission on the
+# application's own buffers: the transition below fires for every memfd dsh_native_t creates,
+# and neither may anything else execute those, nor this domain execute any other tmpfs file.
+# files_type() sets the file_type attribute - it does not declare the type, so the type line is
+# still required. The attribute is what lets setfiles_t relabel files into it, and what every
+# other file type on this box carries.
+type dsh_native_tmpfs_t;
+files_type(dsh_native_tmpfs_t)
+type_transition dsh_native_t tmpfs_t:file dsh_native_tmpfs_t;
+
+# r30: its own QML. /usr/share/dsh-native belongs to this package, so its files get a type of
+# their own instead of sitting in usr_t, and the live-reload watch stays inside that tree.
+type dsh_native_qml_t;
+files_type(dsh_native_qml_t)
+
+########################################
+#
+# dsh-native local policy
+#
+
+allow dsh_native_t self:process { fork setpgid setrlimit signal_perms };
+allow dsh_native_t self:fifo_file manage_fifo_file_perms;
+allow dsh_native_t self:unix_stream_socket create_stream_socket_perms;
+allow dsh_native_t self:unix_dgram_socket { connect create ioctl };
+allow dsh_native_t self:shm { create destroy read unix_read unix_write write };
+
+domain_use_interactive_fds(dsh_native_t)
+files_read_etc_files(dsh_native_t)
+auth_use_nsswitch(dsh_native_t)
+miscfiles_read_localization(dsh_native_t)
+files_list_usr(dsh_native_t)
+
+dsh_native_run(staff_t, staff_r)
+
+# The QML it displays and the file-change watch that reloads it. watch is a notification and
+# grants no read, and it is scoped to this package's own tree rather than usr_t.
+allow dsh_native_t dsh_native_qml_t:file { getattr map open read watch };
+allow dsh_native_t dsh_native_qml_t:dir { getattr open read search watch };
+# Run with --qml <work tree> it watches a second copy under the home directory; that
+# invocation is in the audit record for this application, not a guess.
+allow dsh_native_t user_home_t:file watch;
+allow dsh_native_t user_home_t:dir watch;
+# Its JIT buffers: map in, write, and execute what it wrote itself, and nothing else.
+allow dsh_native_t dsh_native_tmpfs_t:file { mmap_rw_file_perms execmod };
+
+allow dsh_native_t user_tmp_t:file { map open read write };
+allow dsh_native_t user_runtime_t:sock_file write;
+allow dsh_native_t xserver_t:fd use;
+allow dsh_native_t xserver_t:unix_dgram_socket sendto;
+allow dsh_native_t xserver_tmpfs_t:file { map read write };
+
+corecmd_exec_bin(dsh_native_t)
+corecmd_search_bin(dsh_native_t)
+dbus_connect_system_bus(dsh_native_t)
+dbus_getattr_session_runtime_socket(dsh_native_t)
+dbus_list_system_bus_runtime(dsh_native_t)
+dbus_rw_session_tmp_sockets(dsh_native_t)
+dbus_send_system_bus(dsh_native_t)
+dbus_system_bus_client(dsh_native_t)
+dbus_write_session_runtime_socket(dsh_native_t)
+dev_ioctl_dri_dev(dsh_native_t)
+dev_read_sysfs(dsh_native_t)
+dev_rw_dri(dsh_native_t)
+files_mmap_read_usr_files(dsh_native_t)
+files_read_etc_runtime_files(dsh_native_t)
+fs_getattr_xattr_fs(dsh_native_t)
+fs_list_tmpfs(dsh_native_t)
+kernel_read_system_state(dsh_native_t)
+miscfiles_manage_fonts(dsh_native_t)
+miscfiles_manage_fonts_cache(dsh_native_t)
+miscfiles_read_fonts(dsh_native_t)
+userdom_search_user_runtime(dsh_native_t)
+userdom_use_inherited_user_terminals(dsh_native_t)
+userdom_use_user_ttys(dsh_native_t)
+xdg_manage_cache(dsh_native_t)
+xdg_manage_data(dsh_native_t)
+xdg_read_config_files(dsh_native_t)
+xdg_search_config_dirs(dsh_native_t)
+xserver_read_user_xauth(dsh_native_t)
+xserver_stream_connect(dsh_native_t)
+xserver_use_user_fonts(dsh_native_t)
