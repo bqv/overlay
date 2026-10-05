@@ -41,7 +41,8 @@ gen_require(`
   type gpg_t;
   type ptmx_t;
   type staff_t;
-  type user_tmp_t;
+  type user_runtime_t;
+	type user_tmp_t;
   class chr_file { getattr ioctl open read write };
   class dir { add_name create getattr mounton open read remove_name search relabelfrom relabelto };
   class process { execmem getcap noatsecure ptrace rlimitinh setexec setsched siginh transition };
@@ -63,7 +64,11 @@ allow gpg_t gpg_secret_t:dir watch;
 # directory, and the supervisor restarted it every few seconds all afternoon - 1590
 # identical { getattr } denials, and no agent at all. matchpathcon already declares
 # gpg_runtime_t for this path; only the creation-time transition was missing.
-filetrans_pattern(staff_t, user_tmp_t, gpg_runtime_t, dir, "gnupg")
+# user_runtime_t, not user_tmp_t: /run/user/1000 carries user_runtime_t, so a transition
+# from user_tmp_t never fires. The earlier version was dead code and the manual restorecon
+# beside it made the directory look fixed - until the reboot at 18:25 recreated it. /run is
+# ephemeral, so this must happen at creation time, in the policy, not by hand after a boot.
+filetrans_pattern(staff_t, user_runtime_t, gpg_runtime_t, dir, "gnupg")
 
 allow gpg_t ptmx_t:chr_file rw_chr_file_perms;
 allow gpg_agent_t ptmx_t:chr_file rw_chr_file_perms;
