@@ -5,3 +5,4 @@
 # literal path lands in the general file_contexts and is then overridden by the per-user
 # entry, which is exactly what happened on the first attempt.
 HOME_DIR/var/work/dsh-linux/qml(/.*)?		gen_context(system_u:object_r:dsh_native_qml_t,s0)
+HOME_DIR/\.dsh/\.credentials\.yaml		gen_context(system_u:object_r:dsh_credentials_t,s0)

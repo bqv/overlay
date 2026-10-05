@@ -4,7 +4,10 @@ gen_require(`
 	attribute user_home_content_type;
 	role staff_r;
 	type staff_t;
+	type local_packet_t;
+	type staff_dbusd_t;
 	type tmpfs_t;
+	type user_home_t;
 	type user_runtime_t;
 	type user_tmp_t;
 	type xserver_t;
@@ -40,6 +43,15 @@ type_transition dsh_native_t tmpfs_t:file dsh_native_tmpfs_t;
 # their own instead of sitting in usr_t, and the live-reload watch stays inside that tree.
 type dsh_native_qml_t;
 files_type(dsh_native_qml_t)
+
+# The credentials the application authenticates with when it talks to the harness. They live
+# in ~/.dsh, which stays user_home_t: retyping that directory would retype the harness's own
+# state, which this session runs on. Only the file gets a type, so dsh_native_t can read it
+# without holding read on the whole home directory (it runs as the user, so DAC is no help:
+# a user_home_t read would include the SSH keys).
+type dsh_credentials_t;
+files_type(dsh_credentials_t)
+typeattribute dsh_credentials_t user_home_content_type;
 # user_home_content_type is the attribute user_home_t carries and the userdomain rules
 # key on, so keeping it means retyping the work-tree QML does not cost the session its own
 # access to files it edits.
@@ -50,7 +62,7 @@ typeattribute dsh_native_qml_t user_home_content_type;
 # dsh-native local policy
 #
 
-allow dsh_native_t self:process { fork setpgid setrlimit signal_perms };
+allow dsh_native_t self:process { fork getsched setpgid setrlimit signal_perms };
 allow dsh_native_t self:fifo_file manage_fifo_file_perms;
 allow dsh_native_t self:unix_stream_socket create_stream_socket_perms;
 allow dsh_native_t self:unix_dgram_socket { connect create ioctl };
@@ -81,9 +93,9 @@ manage_files_pattern(staff_t, dsh_native_qml_t, dsh_native_qml_t)
 allow staff_t dsh_native_qml_t:dir watch;
 allow staff_t dsh_native_qml_t:file watch;
 # Its JIT buffers: map in, write, and execute what it wrote itself, and nothing else.
-allow dsh_native_t dsh_native_tmpfs_t:file { mmap_rw_file_perms execmod };
+allow dsh_native_t dsh_native_tmpfs_t:file { execmod execute mmap_rw_file_perms };
 
-allow dsh_native_t user_tmp_t:file { map open read write };
+allow dsh_native_t user_tmp_t:file { append create getattr map open read write };
 allow dsh_native_t user_runtime_t:sock_file write;
 allow dsh_native_t xserver_t:fd use;
 allow dsh_native_t xserver_t:unix_dgram_socket sendto;
@@ -119,3 +131,30 @@ xdg_search_config_dirs(dsh_native_t)
 xserver_read_user_xauth(dsh_native_t)
 xserver_stream_connect(dsh_native_t)
 xserver_use_user_fonts(dsh_native_t)
+
+# --- r32: the launch, collected through the permissive window ---
+#
+# Everything here names a denial from the first real run. The transport is the socket error
+# the owner hit: the application talks to the DSH carrier on loopback TCP 8081, which the
+# policy labels transproxy_port_t, and loopback traffic is local_packet_t - a type no
+# interface grants, so the packet permission is stated directly.
+allow dsh_native_t local_packet_t:packet { send recv };
+corenet_tcp_connect_transproxy_port(dsh_native_t)
+# term_use_ptmx, not term_create_pty: that one takes (domain, pty_type) and expands a
+# type_transition from its second argument, so calling it with one argument emits
+# "type_transition dsh_native_t devpts_t:chr_file ;" - a rule nobody wrote. Both interfaces
+# grant the same ptmx permission.
+term_use_ptmx(dsh_native_t)
+# The session bus daemon here is staff_dbusd_t, not the dbus module's own types; shortwave
+# carries the same line.
+allow dsh_native_t staff_dbusd_t:unix_stream_socket connectto;
+# Traversal only, so it can reach its credentials file: search, not read or list.
+allow dsh_native_t user_home_t:dir search;
+allow dsh_native_t dsh_credentials_t:file { getattr open read };
+# It inspects the process that launched it (the harness) - /proc/<pid>/exe and friends. This
+# is the standard ps_process_pattern set, scoped to staff_t rather than all domains.
+ps_process_pattern(dsh_native_t, staff_t)
+# The harness keeps its own access to the credentials file: manage, plus map and watch, the
+# parts of what staff_t holds on user_home_t that mean anything for this file.
+manage_files_pattern(staff_t, dsh_credentials_t, dsh_credentials_t)
+allow staff_t dsh_credentials_t:file { map watch };

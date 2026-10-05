@@ -1,0 +1,2 @@
+# The owner's scratch directory, and where applications drop their own logs.
+HOME_DIR/tmp(/.*)?		gen_context(system_u:object_r:user_tmp_t,s0)
