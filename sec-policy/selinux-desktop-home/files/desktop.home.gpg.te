@@ -69,6 +69,13 @@ allow gpg_t gpg_secret_t:dir watch;
 # beside it made the directory look fixed - until the reboot at 18:25 recreated it. /run is
 # ephemeral, so this must happen at creation time, in the policy, not by hand after a boot.
 filetrans_pattern(staff_t, user_runtime_t, gpg_runtime_t, dir, "gnupg")
+# The transition alone is not enough: mkdir checks add_name on the parent (staff_t has
+# that on user_runtime_t) AND create on the type the new object gets. Without this the
+# probe's mkdir fails outright; before the transition was corrected it fell through to
+# refpolicy's general staff_t -> user_tmp_t, which is how the directory kept coming back
+# wrong. search so the session can still find the directory it made.
+allow staff_t gpg_runtime_t:dir { add_name create search };
+
 
 allow gpg_t ptmx_t:chr_file rw_chr_file_perms;
 allow gpg_agent_t ptmx_t:chr_file rw_chr_file_perms;
