@@ -1,2 +1,36 @@
 ## <summary>External home module.</summary>
 
+
+########################################
+## <summary>
+##	The GUI client set a desktop application on this box needs.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed access.
+##	</summary>
+## </param>
+#
+## The set is: the X authority file it authenticates with and the X stream socket
+## it connects to, the session and system D-Bus sockets, the disk cache its
+## toolkit writes, the X shared-memory buffer it maps, and the file descriptors
+## an interactive session hands it.
+##
+## It was four copies of the same seven rules - shortwave, crow, gajim and
+## dsh-native - differing only in the domain, so the rules moved here in r37.
+## mplayer_t is deliberately not a caller: refpolicy gives it all of this except
+## domain_use_interactive_fds, so calling this would ADD a permission to that
+## domain rather than factor one out. It keeps its own lines with a note.
+interface(`desktop_home_gui_client',`
+	gen_require(`
+		type xserver_tmpfs_t;
+	')
+
+	allow $1 xserver_tmpfs_t:file { map read write };
+	xserver_read_user_xauth($1)
+	xserver_stream_connect($1)
+	dbus_rw_session_tmp_sockets($1)
+	dbus_system_bus_client($1)
+	xdg_manage_cache($1)
+	domain_use_interactive_fds($1)
+')

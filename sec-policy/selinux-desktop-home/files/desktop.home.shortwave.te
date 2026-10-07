@@ -38,7 +38,6 @@ allow shortwave_t self:process { fork setpgid setrlimit signal_perms };
 allow shortwave_t self:fifo_file manage_fifo_file_perms;
 allow shortwave_t self:unix_stream_socket create_stream_socket_perms;
 
-domain_use_interactive_fds(shortwave_t)
 files_read_etc_files(shortwave_t)
 auth_use_nsswitch(shortwave_t)
 miscfiles_read_localization(shortwave_t)
@@ -60,7 +59,6 @@ allow shortwave_t v4l_device_t:chr_file { getattr ioctl open read write };
 mmap_read_files_pattern(shortwave_t, var_lib_t, var_lib_t)
 allow shortwave_t xserver_t:fd use;
 allow shortwave_t xserver_t:unix_dgram_socket sendto;
-allow shortwave_t xserver_tmpfs_t:file { map read write };
 corecmd_exec_bin(shortwave_t)
 corecmd_search_bin(shortwave_t)
 corenet_sendrecv_http_client_packets(shortwave_t)
@@ -71,9 +69,9 @@ corenet_tcp_connect_http_port(shortwave_t)
 corenet_udp_bind_generic_node(shortwave_t)
 corenet_udp_bind_howl_port(shortwave_t)
 dbus_list_system_bus_runtime(shortwave_t)
-dbus_rw_session_tmp_sockets(shortwave_t)
 dbus_send_system_bus(shortwave_t)
-dbus_system_bus_client(shortwave_t)
+# The GUI client set every desktop application here needs - see desktop.home.if.
+desktop_home_gui_client(shortwave_t)
 dev_ioctl_dri_dev(shortwave_t)
 dev_read_sysfs(shortwave_t)
 dev_rw_dri(shortwave_t)
@@ -97,11 +95,8 @@ userdom_search_user_runtime(shortwave_t)
 userdom_search_user_runtime_root(shortwave_t)
 userdom_use_user_ttys(shortwave_t)
 userdom_use_inherited_user_terminals(shortwave_t)
-xdg_manage_cache(shortwave_t)
 xdg_manage_data(shortwave_t)
 xdg_read_config_files(shortwave_t)
 xdg_search_config_dirs(shortwave_t)
-xserver_read_user_xauth(shortwave_t)
-xserver_stream_connect(shortwave_t)
 xserver_use_user_fonts(shortwave_t)
 #xserver_use_xdm_fds(shortwave_t)

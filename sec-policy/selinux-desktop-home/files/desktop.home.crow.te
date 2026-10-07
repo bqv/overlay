@@ -78,16 +78,15 @@ allow crow_t tmpfs_t:file { create getattr link map open read unlink write };
 allow crow_t user_runtime_t:dir { search open read getattr };
 allow crow_t user_runtime_t:sock_file { read write getattr };
 allow crow_t xserver_t:fd use;
-allow crow_t xserver_tmpfs_t:file { map read write };
 corecmd_exec_bin(crow_t)
 corecmd_search_bin(crow_t)
 corecmd_shell_entry_type(crow_t)
 corenet_tcp_connect_http_port(crow_t)
 dbus_read_lib_files(crow_t)
-dbus_rw_session_tmp_sockets(crow_t)
-dbus_system_bus_client(crow_t)
 dbus_all_session_bus_client(crow_t)
 dbus_connect_all_session_bus(crow_t)
+# The GUI client set every desktop application here needs - see desktop.home.if.
+desktop_home_gui_client(crow_t)
 dev_filetrans_vsock_dev(crow_t)
 dev_list_sysfs(crow_t)
 dev_manage_generic_symlinks(crow_t)
@@ -114,14 +113,10 @@ userdom_search_user_home_dirs(crow_t)
 userdom_search_user_runtime(crow_t)
 userdom_search_user_runtime_root(crow_t)
 userdom_use_user_ptys(crow_t)
-xdg_manage_cache(crow_t)
 xdg_search_config_dirs(crow_t)
 xdg_search_data_dirs(crow_t)
-xserver_read_user_xauth(crow_t)
 xserver_rw_mesa_shader_cache(crow_t)
-xserver_stream_connect(crow_t)
 
-domain_use_interactive_fds(crow_t)
 files_read_etc_files(crow_t)
 miscfiles_read_localization(crow_t)
 

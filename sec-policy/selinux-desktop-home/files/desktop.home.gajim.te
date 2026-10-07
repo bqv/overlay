@@ -55,7 +55,6 @@ role staff_r types gajim_t;
 allow gajim_t self:fifo_file manage_fifo_file_perms;
 allow gajim_t self:unix_stream_socket create_stream_socket_perms;
 
-domain_use_interactive_fds(gajim_t)
 files_read_etc_files(gajim_t)
 miscfiles_read_localization(gajim_t)
 
@@ -84,7 +83,6 @@ allow gajim_t xdg_config_t:dir { add_name getattr open read remove_name search w
 allow gajim_t xdg_data_t:dir { add_name getattr open read remove_name search watch };
 allow gajim_t xserver_t:fd use;
 allow gajim_t xserver_t:unix_dgram_socket sendto;
-allow gajim_t xserver_tmpfs_t:file { map read write };
 corecmd_exec_bin(gajim_t)
 corecmd_search_bin(gajim_t)
 corenet_sendrecv_dns_client_packets(gajim_t)
@@ -102,9 +100,9 @@ corenet_tcp_connect_http_port(gajim_t)
 corenet_tcp_connect_jabber_client_port(gajim_t)
 dbus_list_system_bus_runtime(gajim_t)
 dbus_read_lib_files(gajim_t)
-dbus_rw_session_tmp_sockets(gajim_t)
 dbus_send_system_bus(gajim_t)
-dbus_system_bus_client(gajim_t)
+# The GUI client set every desktop application here needs - see desktop.home.if.
+desktop_home_gui_client(gajim_t)
 dev_read_sysfs(gajim_t)
 dev_read_urand(gajim_t)
 dev_rw_dri(gajim_t)
@@ -143,10 +141,8 @@ userdom_use_user_ptys(gajim_t)
 #   xdg_manage_downloads(gajim_t) # [105]
 #   xdg_manage_downloads_home(gajim_t) # [105]
 xdg_create_downloads(gajim_t)
-# Interface options:
-#   xdg_manage_cache(gajim_t) # [241]
-#   xdg_manage_cache_home(gajim_t) # [241]
-xdg_manage_cache(gajim_t)
+# gajim's cache access (xdg_manage_cache, [241]) now comes from
+# desktop_home_gui_client above; xdg_manage_cache_home was the alternative.
 # Interface options:
 #   xdg_manage_config(gajim_t) # [247]
 #   xdg_manage_config_home(gajim_t) # [247]
@@ -163,6 +159,4 @@ xdg_manage_data(gajim_t)
 xdg_manage_pictures(gajim_t)
 xserver_list_xdm_tmp(gajim_t)
 xserver_read_tmp_files(gajim_t)
-xserver_read_user_xauth(gajim_t)
-xserver_stream_connect(gajim_t)
 xserver_use_user_fonts(gajim_t)
