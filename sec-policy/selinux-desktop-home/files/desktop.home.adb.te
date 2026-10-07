@@ -3,6 +3,7 @@ policy_module(desktop.home.adb, 1.0)
 gen_require(`
 	type android_tools_t;
 	type staff_t;
+	type staff_screen_t;
 	type dynamic_packet_t;
 	type mdns_packet_t;
 	type local_packet_t;
@@ -75,3 +76,46 @@ allow android_tools_t user_tmp_t:file create;
 # those packets carry this box own dynamic_packet_t - the type the network module uses instead
 # of leaving dynamically-classified traffic unlabelled.
 allow android_tools_t dynamic_packet_t:packet { send recv };
+
+# --- r39: the server could not talk to its own clients ---
+#
+# Moving adb into this domain broke the wireless half, and the phone was never the problem.
+# adb's host side is a client/server protocol over the loopback socket, and every local
+# client is a staff_t process: adbtrack holds the device stream and issues the connects, and
+# each `adb` command in the session is another client. For a unix socket, read and write are
+# checked against the PEER socket's label, which is staff_t, so the server was denied its own
+# clients. Measured under enforcing, 20 times in one run:
+#
+#   avc: denied { read write } for comm="adb" scontext=...android_tools_t
+#                              tcontext=...staff_t tclass=unix_stream_socket
+#
+# Both symptoms follow from it. adbtrack logged "could not open track-devices", so the device
+# stream never existed and the wireless transport was never brought up; and a direct
+# `adb connect 192.168.1.106:38079` failed with
+#   tls_connection.cpp:282 [client]: Handshake failed in SSL_accept/SSL_connect [invalid library (0)]
+# without ever reaching adb_tls_set_certificate (auth.cpp:515), the step that fetches the key
+# and presents the certificate. The phone simply closed a handshake that never presented one.
+#
+# What ruled out the alternatives, all measured on the same phone and key: the same connect
+# succeeds (device listed, Handshake succeeded x2) when this domain is permissive; it also
+# succeeds when the server runs as staff_t instead; and the SDK's platform-tools 36.0.0 binary
+# fails in this domain while the system 36.0.1 binary fails in it too - so neither the key, nor
+# the pairing, nor the adb version is the cause, and "36.0.0 is buggy" was the wrong reading of
+# the first trace.
+#
+# Scope: this is the local IPC that adb's protocol requires, peer-scoped to the session domain.
+# It is deliberately not narrowed further here - the tighter form is a domain of its own for
+# adbtrack, which is a change to a working user tool rather than to this policy (see ledger).
+allow android_tools_t staff_t:unix_stream_socket { getattr read write };
+#
+# r39b: the same shape one level up. The session's services and terminals run inside a
+# screen/tmux session, so an adb started there - the user's own `adb` in a pane - inherits a
+# pty whose label is staff_screen_t, and using that descriptor is a check against the PTY's
+# domain, not the file's:
+#
+#   avc: denied { use } for comm="adb" path="/dev/pts/5" scontext=...android_tools_t
+#                            tcontext=...staff_screen_t tclass=fd
+#
+# Without it the client cannot write to the terminal it was started from. One class, one
+# permission, and only for the session's screen domain.
+allow android_tools_t staff_screen_t:fd use;

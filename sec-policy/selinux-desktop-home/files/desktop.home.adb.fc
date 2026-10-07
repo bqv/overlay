@@ -1,3 +1,11 @@
 /opt/android-sdk/platform-tools/adb		--	gen_context(system_u:object_r:android_tools_exec_t,s0)
+# r39: the SDK build is 36.0.0 and its adbwifi TLS handshake fails against this phone -
+# "Handshake failed in SSL_accept/SSL_connect [invalid library (0)]", the phone closing the
+# handshake - while the system build (36.0.1, android-tools) completes it with the same key,
+# the same phone and the same known_hosts. adbtrack is pinned to the system build, so it
+# needs the same label or its USB access would fall back to staff_t. The transition keys on
+# the type, not the path: android_tools_domtrans(staff_t) grants the entrypoint on
+# android_tools_exec_t.
+/usr/bin/adb					--	gen_context(system_u:object_r:android_tools_exec_t,s0)
 # The rest of the SDK stays bin_t: fastboot needs the same treatment if it is ever used
 # against a USB device, but nothing has measured that yet.
