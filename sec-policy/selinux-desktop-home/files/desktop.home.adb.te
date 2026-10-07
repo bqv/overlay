@@ -9,6 +9,8 @@ gen_require(`
 	type local_packet_t;
 	type adb_client_packet_t;
 	type user_tmp_t;
+	attribute defined_port_type;
+	attribute port_type;
 ')
 
 # r35: adb runs in refpolicy's own android_tools_t domain, not in staff_t.
@@ -119,3 +121,43 @@ allow android_tools_t staff_t:unix_stream_socket { getattr read write };
 # Without it the client cannot write to the terminal it was started from. One class, one
 # permission, and only for the session's screen domain.
 allow android_tools_t staff_screen_t:fd use;
+
+# --- r41: 5037 is the server's port, not everyone's ---
+#
+# Starting an adb server asks the kernel for exactly one thing: name_bind on the port. 5037 is
+# adb_port_t, and refpolicy declares that type as
+#
+#	defined_port_type, port_type, unreserved_port_type
+#
+# which puts it straight under the base policy's
+#
+#	allow staff_t unreserved_port_type:tcp_socket name_bind
+#
+# That one attribute grant is why ANY session process can hold 5037 and start a rival server.
+# A base rule cannot be taken away - SELinux has no deny - so the lever is the label: 5037 is
+# relabelled to this type, which keeps port_type (so every client keeps its name_connect and
+# adb from a shell, from tmux or from an IDE is unaffected) but is deliberately NOT in
+# unreserved_port_type. The bind is then granted to the server domain alone, and the only way
+# to become the server domain is to be adbtrack.
+#
+# The mapping is applied by this package's pkg_postinst with
+#
+#	semanage port -m -t adb_server_port_t -p tcp 5037
+#
+# because a local port mapping outranks the base's portcon for the same port, which a
+# module-level portcon does not do predictably. Doing it in the ebuild keeps it reproducible:
+# make -C sec-policy/selinux-desktop-home merge reapplies it.
+type adb_server_port_t, defined_port_type, port_type;
+
+# The server is android_tools_t - adbtrack execs the adb binary and the child inherits that
+# domain - so this single rule is what decides who may start a server. refpolicy's own
+# corenet_tcp_bind_adb_port names the old type and no longer applies to this port.
+allow android_tools_t adb_server_port_t:tcp_socket name_bind;
+
+# ...and the other half of the same relabel: the CLIENT. android_tools_t reached 5037 through
+# unreserved_port_type before, which this type is deliberately not in, so without this line
+# every adb command fails with `cannot connect to daemon at tcp:5037: Permission denied` the
+# moment the port is relabelled. Clients that run in the session's own domain (staff_t) keep
+# their connect for free, because this type stays in port_type - which is exactly why it is
+# still a member.
+allow android_tools_t adb_server_port_t:tcp_socket name_connect;

@@ -40,6 +40,13 @@ RDEPEND="${DEPEND}
 
 pkg_postinst() {
 	selinux-policy-2_pkg_postinst
+	# 5037 is the adb server's port. refpolicy labels it adb_port_t, which is a member of
+	# unreserved_port_type, so the base policy lets every session process bind it - and any
+	# of them could therefore start a rival adb server. Relabel it to the local type the adb
+	# module declares, which is not in that attribute, so only android_tools_t may bind it
+	# (desktop.home.adb). A local port mapping outranks the base portcon, and applying it
+	# here means `make merge` reproduces it on every merge.
+	semanage port -m -t adb_server_port_t -p tcp 5037
 	# the pass keychain needs gpg to write generic home content - see booleans.local
 	setsebool -P gpg_manage_generic_user_content on
 	setsebool -P gpg_agent_env_file on
