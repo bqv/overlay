@@ -227,3 +227,27 @@ allow staff_t user_tmpfs_t:file execmod;
 # in refpolicy's android_tools_t instead (see desktop.home.adb), which already holds the device
 # access, so staff_t keeps nothing on /dev/bus/usb: the grant had also covered the nodes
 # belonging to the keyboard and mouse.
+
+# --- r36: the mDNS listener adbtrack never got (a silent denial) ---
+#
+# ~/bin/adbtrack keeps one adb server and the phone's wireless transport alive. It waits in
+# poll() on its own mDNS socket as well as on adb's device stream, so a phone that appears
+# wakes it instead of waiting out its 30s re-ask. It is the session user's own tool, so it
+# runs as staff_t - and staff_t cannot bind the mDNS port. Measured with a bare bind and
+# nothing else on the socket:
+#
+#   bind(0.0.0.0:5353)  -> EACCES            bind(0.0.0.0:40000) -> bound
+#   ss -lunp | grep 5353 -> only the adb server (android_tools_t), which holds this grant
+#                           for its Openscreen daemon; adbtrack has no listener of its own.
+#
+# The denial leaves NO audit record: the policy carries
+#   dontaudit staff_t defined_port_type:udp_socket name_bind;
+# so the symptom is the EACCES alone, which is why a bind test found this and ausearch did
+# not. It is the gpg/git lesson again: ask sesearch --dontaudit before believing "no denial".
+#
+# corenet_udp_bind_howl_port is refpolicy's interface for exactly this one permission
+# (allow $1 howl_port_t:udp_socket name_bind), so nothing generic is opened up. The grant is
+# to staff_t as a whole, not to adbtrack alone; that is accepted because it is a port label
+# only - bind, with no read or write on the socket - and the port is held by the adb server
+# already. Capability delta: one row, staff_t howl_port_t:udp_socket name_bind.
+corenet_udp_bind_howl_port(staff_t)
