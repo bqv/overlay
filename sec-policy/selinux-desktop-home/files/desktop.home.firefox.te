@@ -25,7 +25,6 @@ gen_require(`
 ')
 
 allow mozilla_t unreserved_port_t:tcp_socket name_connect;
-allow mozilla_t user_runtime_t:sock_file write;
 mmap_read_files_pattern(mozilla_t, var_lib_t, var_lib_t)
 corenet_sendrecv_dns_client_packets(stremio_server_t)
 corenet_sendrecv_http_client_packets(stremio_server_t)
@@ -39,7 +38,9 @@ dev_watch_dev_dirs(mozilla_t)
 files_exec_usr_files(mozilla_t) # glxtest,crashhelper
 #files_watch_var_lib_dirs(mozilla_t) # flatpak?
 fs_read_cgroup_symlinks(mozilla_t)
-pipewire_play(mozilla_t)
+# pipewire play plus the client socket, which carries user_runtime_t:
+# one interface - desktop.home.if.
+desktop_home_pipewire_client(mozilla_t)
 xdg_watch_config_dirs(mozilla_t)
 xdg_watch_data_dirs(mozilla_t)
 

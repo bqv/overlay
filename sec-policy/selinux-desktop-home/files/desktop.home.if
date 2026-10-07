@@ -34,3 +34,54 @@ interface(`desktop_home_gui_client',`
 	xdg_manage_cache($1)
 	domain_use_interactive_fds($1)
 ')
+
+########################################
+## <summary>
+##	The X client set a desktop application on this box needs.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed access.
+##	</summary>
+## </param>
+#
+## The socket its toolkit sends on, the descriptor the session hands it for the X
+## connection, and the user font path. Three modules carried these - shortwave,
+## gajim and dsh-native. The neighbouring domains are deliberately not callers:
+## crow holds only the descriptor, firefox only the socket, and mplayer_t gets the
+## descriptor from refpolicy's own X template, so any of them calling this would
+## gain a permission rather than factor one out.
+interface(`desktop_home_x11_client',`
+	gen_require(`
+		type xserver_t;
+	')
+
+	allow $1 xserver_t:fd use;
+	allow $1 xserver_t:unix_dgram_socket sendto;
+	xserver_use_user_fonts($1)
+')
+
+########################################
+## <summary>
+##	The pipewire client set: play through it, and use its socket.
+## </summary>
+## <param name="domain">
+##	<summary>
+##	Domain allowed access.
+##	</summary>
+## </param>
+#
+## pipewire_play is this package's own interface for the client half of the daemon
+## (desktop.home.pipewire.if). The write is the one piece refpolicy does not type:
+## the client socket is /run/user/1000/pipewire-0 and carries user_runtime_t, so it
+## stays a raw allow. shortwave, firefox and mpv each carried both lines; mplayer_t
+## keeps its fd use on pipewire_t and its tmpfs buffer in its own file, because it
+## is the only domain here that has them.
+interface(`desktop_home_pipewire_client',`
+	gen_require(`
+		type user_runtime_t;
+	')
+
+	allow $1 user_runtime_t:sock_file write;
+	pipewire_play($1)
+')

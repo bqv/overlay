@@ -81,8 +81,6 @@ mmap_read_files_pattern(gajim_t, var_lib_t, var_lib_t)
 read_files_pattern(gajim_t, xauth_tmp_t, xauth_tmp_t)
 allow gajim_t xdg_config_t:dir { add_name getattr open read remove_name search watch };
 allow gajim_t xdg_data_t:dir { add_name getattr open read remove_name search watch };
-allow gajim_t xserver_t:fd use;
-allow gajim_t xserver_t:unix_dgram_socket sendto;
 corecmd_exec_bin(gajim_t)
 corecmd_search_bin(gajim_t)
 corenet_sendrecv_dns_client_packets(gajim_t)
@@ -103,6 +101,9 @@ dbus_read_lib_files(gajim_t)
 dbus_send_system_bus(gajim_t)
 # The GUI client set every desktop application here needs - see desktop.home.if.
 desktop_home_gui_client(gajim_t)
+# The X socket, the session's descriptor for it and the user font path:
+# desktop.home.if.
+desktop_home_x11_client(gajim_t)
 dev_read_sysfs(gajim_t)
 dev_read_urand(gajim_t)
 dev_rw_dri(gajim_t)
@@ -159,4 +160,3 @@ xdg_manage_data(gajim_t)
 xdg_manage_pictures(gajim_t)
 xserver_list_xdm_tmp(gajim_t)
 xserver_read_tmp_files(gajim_t)
-xserver_use_user_fonts(gajim_t)

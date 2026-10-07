@@ -53,12 +53,9 @@ allow shortwave_t self:unix_dgram_socket { connect create ioctl };
 allow shortwave_t staff_dbusd_t:unix_stream_socket connectto;
 allow shortwave_t tmpfs_t:file { execute map read write };
 allow shortwave_t unreserved_port_t:udp_socket name_bind;
-allow shortwave_t user_runtime_t:sock_file write;
 allow shortwave_t user_tmp_t:file { map open read write };
 allow shortwave_t v4l_device_t:chr_file { getattr ioctl open read write };
 mmap_read_files_pattern(shortwave_t, var_lib_t, var_lib_t)
-allow shortwave_t xserver_t:fd use;
-allow shortwave_t xserver_t:unix_dgram_socket sendto;
 corecmd_exec_bin(shortwave_t)
 corecmd_search_bin(shortwave_t)
 corenet_sendrecv_http_client_packets(shortwave_t)
@@ -72,6 +69,10 @@ dbus_list_system_bus_runtime(shortwave_t)
 dbus_send_system_bus(shortwave_t)
 # The GUI client set every desktop application here needs - see desktop.home.if.
 desktop_home_gui_client(shortwave_t)
+# The X socket, the session's descriptor for it and the user font path; and pipewire
+# play plus its client socket, which carries user_runtime_t. Both: desktop.home.if.
+desktop_home_pipewire_client(shortwave_t)
+desktop_home_x11_client(shortwave_t)
 dev_ioctl_dri_dev(shortwave_t)
 dev_read_sysfs(shortwave_t)
 dev_rw_dri(shortwave_t)
@@ -87,7 +88,6 @@ kernel_read_system_state(shortwave_t)
 miscfiles_manage_fonts(shortwave_t)
 miscfiles_manage_fonts_cache(shortwave_t)
 miscfiles_read_fonts(shortwave_t)
-pipewire_play(shortwave_t)
 selinux_getattr_fs(shortwave_t)
 seutil_search_default_contexts(shortwave_t)
 userdom_list_user_tmp(shortwave_t)
@@ -98,5 +98,4 @@ userdom_use_inherited_user_terminals(shortwave_t)
 xdg_manage_data(shortwave_t)
 xdg_read_config_files(shortwave_t)
 xdg_search_config_dirs(shortwave_t)
-xserver_use_user_fonts(shortwave_t)
 #xserver_use_xdm_fds(shortwave_t)

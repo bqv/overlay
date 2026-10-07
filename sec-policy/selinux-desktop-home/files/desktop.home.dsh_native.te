@@ -96,8 +96,6 @@ allow dsh_native_t dsh_native_tmpfs_t:file { execmod execute mmap_rw_file_perms 
 
 allow dsh_native_t user_tmp_t:file { append create getattr map open read write };
 allow dsh_native_t user_runtime_t:sock_file write;
-allow dsh_native_t xserver_t:fd use;
-allow dsh_native_t xserver_t:unix_dgram_socket sendto;
 
 corecmd_exec_bin(dsh_native_t)
 corecmd_search_bin(dsh_native_t)
@@ -108,6 +106,9 @@ dbus_send_system_bus(dsh_native_t)
 dbus_write_session_runtime_socket(dsh_native_t)
 # The GUI client set every desktop application here needs - see desktop.home.if.
 desktop_home_gui_client(dsh_native_t)
+# The X socket, the session's descriptor for it and the user font path:
+# desktop.home.if.
+desktop_home_x11_client(dsh_native_t)
 dev_ioctl_dri_dev(dsh_native_t)
 dev_read_sysfs(dsh_native_t)
 dev_rw_dri(dsh_native_t)
@@ -125,7 +126,6 @@ userdom_use_user_ttys(dsh_native_t)
 xdg_manage_data(dsh_native_t)
 xdg_read_config_files(dsh_native_t)
 xdg_search_config_dirs(dsh_native_t)
-xserver_use_user_fonts(dsh_native_t)
 
 # --- r32: the launch, collected through the permissive window ---
 #

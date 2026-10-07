@@ -61,11 +61,10 @@ dbus_list_system_bus_runtime(mplayer_t)
 dbus_rw_session_tmp_sockets(mplayer_t)
 dbus_send_system_bus(mplayer_t)
 dbus_system_bus_client(mplayer_t)
-pipewire_play(mplayer_t)
+# pipewire play plus the write on its client socket, which carries user_runtime_t
+# here rather than a pipewire type (/run/user/1000/pipewire-0): desktop.home.if.
+desktop_home_pipewire_client(mplayer_t)
 xdg_manage_cache(mplayer_t)
-# pipewire socket carries user_runtime_t here, not a pipewire type - the denial named
-# /run/user/1000/pipewire-0 directly - and shortwave carries the same one-line grant.
-allow mplayer_t user_runtime_t:sock_file write;
 # libplacebo, and the NVIDIA blob behind it, read the allow_execmem boolean to decide
 # whether runtime shader compilation is permitted. A boolean value is not a privilege -
 # getsebool works for any user - and without this read the VO path cannot tell.
