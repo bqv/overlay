@@ -9,3 +9,6 @@
 /usr/bin/adb					--	gen_context(system_u:object_r:android_tools_exec_t,s0)
 # The rest of the SDK stays bin_t: fastboot needs the same treatment if it is ever used
 # against a USB device, but nothing has measured that yet.
+# r42: the service binary gets its own domain, so "who may become the adb server domain" has an
+# answer other than "anything in the session".
+/home/user/bin/adbtrack			--	gen_context(system_u:object_r:adbtrack_exec_t,s0)

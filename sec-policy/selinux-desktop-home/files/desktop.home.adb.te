@@ -9,6 +9,9 @@ gen_require(`
 	type local_packet_t;
 	type adb_client_packet_t;
 	type user_tmp_t;
+	type user_home_t;
+	type user_runtime_t;
+	role staff_r;
 	attribute defined_port_type;
 	attribute port_type;
 ')
@@ -23,8 +26,10 @@ gen_require(`
 # having nothing on /dev/bus/usb.
 #
 # android_tools_domtrans is refpolicy's own entry, which also grants the entrypoint on the
-# exec type. staff_t already had the transition itself.
-android_tools_domtrans(staff_t)
+# exec type. It was granted to staff_t here until r42; it is now granted to adbtrack_t alone
+# (below), because that transition IS the ability to start a server: it is what puts a process
+# in the one domain that may bind the adb port. A session process that runs adb is now a pure
+# client - it reaches 5037 through port_type and cannot hold it.
 
 # android_tools_t reads and writes usb_device_t but does NOT watch the bus directories, so a
 # phone plugged in after the server started was never noticed - which is exactly the reported
@@ -161,3 +166,79 @@ allow android_tools_t adb_server_port_t:tcp_socket name_bind;
 # their connect for free, because this type stays in port_type - which is exactly why it is
 # still a member.
 allow android_tools_t adb_server_port_t:tcp_socket name_connect;
+
+# --- r42: adbtrack gets a domain of its own ---
+#
+# What decides who may start a server is name_bind on adb_server_port_t (r41), and the domain
+# that holds it is android_tools_t. So "only the service may start a server" is really "only the
+# service may BECOME android_tools_t" - and until now anything in the session could, because
+# android_tools_domtrans(staff_t) gives staff_t the transition. A plain `adb start-server` from
+# a shell therefore brought up a server in the server's own domain.
+#
+# adbtrack moves into a domain of its own and keeps the transition; the session's copy goes in
+# the next round, once this one is proven to run the service. Until then a session process can
+# still start a server, so this is deliberately not the whole change.
+#
+# The service is a user service: it is exec'd by supervise-daemon in the user's rc session,
+# which is staff_t/staff_r, so the transition and the role are both from there.
+type adbtrack_t;
+type adbtrack_exec_t;
+application_domain(adbtrack_t, adbtrack_exec_t)
+role staff_r types adbtrack_t;
+domtrans_pattern(staff_t, adbtrack_exec_t, adbtrack_t)
+
+# The whole point: the service, and only the service, can become the server domain. refpolicy's
+# entry also grants the search and the entrypoint on android_tools_exec_t.
+android_tools_domtrans(adbtrack_t)
+
+# NOT removable from here, and that is the whole remaining problem. A live client still runs as
+# android_tools_t after the call above was removed, and a self-transition
+#
+#	type_transition staff_t android_tools_exec_t:process staff_t;
+#
+# does not cancel it either (it was tried and measured: the client stayed android_tools_t), so
+# the base policy's own `android` module wins for this key. Patching that module - or the
+# package that owns it - is what "only the service starts a server" still needs; see the ledger
+# entry for this round. It is not a rule that can be added here.
+
+# --- what the domain needs, before the permissive window refines it ---
+#
+# Every line below names a denial from one permissive-window run of the real service, the same
+# collection android_tools_t got in r35b. The packet types are granted per domain in this tree,
+# not by attribute, so a new domain has to name them.
+#
+# mDNS, which adbtrack speaks itself (lookup.c): the socket, the howl port, the node bind a
+# multicast bind performs, and the packets it sends and receives.
+allow adbtrack_t self:udp_socket { create bind setopt read write };
+corenet_udp_bind_howl_port(adbtrack_t)
+corenet_udp_bind_generic_node(adbtrack_t)
+allow adbtrack_t mdns_packet_t:packet { send recv };
+
+# The client connection to the server: loopback TCP, so the socket's own stream permissions,
+# name_connect on the relabelled port, and the packet label the secmark ruleset puts on 5037
+# traffic - this tree's adb_client_packet_t, not the generic local one.
+allow adbtrack_t self:tcp_socket create_stream_socket_perms;
+allow adbtrack_t adb_server_port_t:tcp_socket name_connect;
+allow adbtrack_t adb_client_packet_t:packet { send recv };
+
+# Locale and zoneinfo, the same pair android_tools_t needed for its log timestamps.
+miscfiles_read_localization(adbtrack_t)
+files_read_etc_files(adbtrack_t);
+
+# The server side of that connection is read and written by android_tools_t, checked against
+# the peer socket's label - the same shape as the staff_t grant in r39, one domain over.
+allow android_tools_t adbtrack_t:unix_stream_socket { getattr read write };
+
+# stdio is inherited from supervise-daemon, which is staff_t: using a descriptor that came from
+# another domain is an fd check against that domain (r39b is the same denial for a pty).
+allow adbtrack_t staff_t:fd use;
+
+# Its log is opened by the supervisor and its scan-backoff file lives in $XDG_RUNTIME_DIR.
+allow adbtrack_t user_home_t:file { append getattr lock open read write };
+# The runtime ROOT as well as its subdirectories: /run/user/1000 is
+# user_runtime_root_t, and reaching $XDG_RUNTIME_DIR/adb-wireless/ needs a search there before
+# the directory below it can be created at all. Without it the state file was silently never
+# written - one of the few denials in this collection that changes behaviour.
+userdom_search_user_runtime_root(adbtrack_t)
+allow adbtrack_t user_runtime_t:dir { add_name search write };
+allow adbtrack_t user_runtime_t:file { create getattr lock open read write };
