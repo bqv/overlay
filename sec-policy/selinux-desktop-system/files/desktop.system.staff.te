@@ -265,3 +265,17 @@ corenet_udp_bind_howl_port(staff_t)
 # same result.
 search_dirs_pattern(staff_sudo_t, user_bin_t, user_bin_t)
 allow staff_sudo_t user_bin_t:lnk_file read;
+
+# --- r46: the file half of the ~/bin grant, because r45 measured a symlink by mistake ---
+# r45's test entry was a symlink to a user_home_t script, so it exercised lnk_file read and
+# never touched user_bin_t:file. A REGULAR file in ~/bin needs one more permission, and the
+# window says exactly one: sudo stat()s the file before handing it to execve.
+#   script probe (a root-owned 0755 script, ran under the window) -> denied { getattr } file
+#   binary probe (a copy of /bin/true, rc=0 under the window)     -> denied { getattr } file
+# Nothing else appears - no open, no read, no execute, no entrypoint - because the exec itself
+# is performed by the target domain, which already has
+#   allow sysadm_t user_bin_t:file { execute execute_no_trans };
+# so this is deliberately one permission rather than the bin_t-shaped set it superficially
+# resembles. Adding execute here would let the WRAPPER run ~/bin content without leaving its
+# own domain, which is the wrong shape.
+allow staff_sudo_t user_bin_t:file getattr;
