@@ -251,3 +251,17 @@ allow staff_t user_tmpfs_t:file execmod;
 # only - bind, with no read or write on the socket - and the port is held by the adb server
 # already. Capability delta: one row, staff_t howl_port_t:udp_socket name_bind.
 corenet_udp_bind_howl_port(staff_t)
+
+# --- r45: sudo -n with a path inside ~/bin ---
+# The wrapper could not resolve anything under ~/bin, so the bare-path form failed with a
+# misleading "command not found" while the interpreter form (sudo -n sh <path>) worked. Measured
+# with one permissive window on staff_sudo_t and the real command: exactly two permissions were
+# missing, both lookup-side - dir search, and lnk_file read because the entries here are
+# symlinks. Nothing is needed on the exec side: no execute denial appears, and the script runs
+# as soon as these two are allowed, so the target domain already covers running it.
+# "user_bin_t is not an exec_type" constrains the broad exec_type grants for confined domains,
+# not root. Same shape as the java_t grant earlier in this tree. Deliberate: it is a convenience
+# here, not a security boundary, because sudo on this box was already one "sh" away from the
+# same result.
+search_dirs_pattern(staff_sudo_t, user_bin_t, user_bin_t)
+allow staff_sudo_t user_bin_t:lnk_file read;
