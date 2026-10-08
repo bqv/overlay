@@ -28,6 +28,8 @@ gen_require(`
   type sysctl_irq_t;
   type sysctl_modprobe_t;
   type user_bin_t;
+  type user_tmp_t;
+  type git_xdg_config_t;
   type user_home_dir_t;
   type user_home_t;
   type user_runtime_t;
@@ -279,3 +281,21 @@ allow staff_sudo_t user_bin_t:lnk_file read;
 # resembles. Adding execute here would let the WRAPPER run ~/bin content without leaving its
 # own domain, which is the wrong shape.
 allow staff_sudo_t user_bin_t:file getattr;
+
+# --- r47: git cannot mmap its config, or a git index that lives in /tmp ---
+# Two denials from a staff_u session, both map, both on the git domain:
+#   staff_git_t -> git_xdg_config_t:file map    (~/.gitconfig)
+#   staff_git_t -> user_tmp_t:file map          (the harness's index-XXXX under /tmp)
+# Why map is missing: in refpolicy the map permission for git domains sits behind
+#   allow git_client_domain user_home_content_type:file map; [ git_client_manage_all_user_home_content ]
+# and that boolean is OFF on this box. getsebool says off; sesearch prints [ bool ]:True on that
+# rule, which is the conditional's polarity rather than the runtime value - getsebool is the
+# authority, and that trap is worth remembering. Enabling the boolean would hand git manage
+# rights over ALL user home content, far beyond the need, so these are the narrow rows instead.
+# The read/write half of both types is unconditional in refpolicy's git module, so map is the
+# only permission missing.
+# The tmp half has refpolicy's own one-liner. There is no equivalent macro for a single
+# user_home_content_type: userdom_map_user_home_content_files covers user_home_t only, and
+# git_xdg_config_t is a different type, hence the explicit row.
+userdom_map_user_tmp_files(staff_git_t)
+allow staff_git_t git_xdg_config_t:file map;
