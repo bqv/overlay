@@ -240,5 +240,18 @@ allow adbtrack_t user_home_t:file { append getattr lock open read write };
 # the directory below it can be created at all. Without it the state file was silently never
 # written - one of the few denials in this collection that changes behaviour.
 userdom_search_user_runtime_root(adbtrack_t)
-allow adbtrack_t user_runtime_t:dir { add_name search write };
-allow adbtrack_t user_runtime_t:file { create getattr lock open read write };
+# create, not just add_name: mkdir() in the runtime dir is a create check on the parent, so
+# without it the state directory is never made and the denial repeats on every run. remove_name
+# and rename are the second half of the same atomic write, which renames scan-backoff.tmp over
+# scan-backoff - measured as `denied { remove_name } ... name="scan-backoff.tmp"`.
+allow adbtrack_t user_runtime_t:dir { create add_name remove_name search write };
+allow adbtrack_t user_runtime_t:file { create getattr lock open read rename write };
+
+# r49: the consequence of the r42 split that mattered most - the supervisor could not reap the
+# service. rc-service stop sends SIGTERM and then SIGKILL as staff_t, and staff_t had no signal
+# permission on adbtrack_t, so every stop silently left the process running. The result after a
+# few restarts was SEVEN adbtrack instances, all appending to one log, all running drop_stale,
+# and any one of them could drop a USB transport again. The audit showed process { signal } x6
+# and { sigkill } x6 from the stop attempts, and they are the proof of this grant:
+#   /proc/<pid>/attr/current said adbtrack_t, uid 1000, and kill returned EPERM as staff_t.
+allow staff_t adbtrack_t:process { signal sigkill signull };
