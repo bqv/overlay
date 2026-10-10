@@ -7,6 +7,7 @@ gen_require(`
   type ssh_home_t;
   type ssh_t;
   type sshd_t;
+  type local_packet_t;
   type staff_t;
   type sysadm_t;
   type user_home_t;
@@ -63,3 +64,15 @@ allow sshd_t initrc_state_t:dir { add_name remove_name };
 read_lnk_files_pattern(sshd_t, initrc_state_t, initrc_state_t)
 allow sshd_t var_run_t:file { getattr open };
 allow sshd_t staff_t:process signull;
+
+########################################
+# NetBird SSH server: loopback packets on the WireGuard path
+#
+# 57 live denials, all shaped like this:
+#   denied { send } for comm="kworker/0:2" saddr=127.0.0.1 src=51820 daddr=127.0.0.1 dest=7
+#     netif=lo scontext=system_u:system_r:sshd_t tcontext=local_packet_t
+# The source port is netbird WireGuard port and the socket belongs to netbird SSH server, but the
+# kernel attributes the packet to sshd_t, and sshd_t had no local_packet_t rule at all. A grant
+# against netbird_t would have been a no-op - that one has been in since the module first loaded
+# (allow netbird_t local_packet_t:packet { recv send };). Loopback only, so the scope is small.
+allow sshd_t local_packet_t:packet { send recv };
