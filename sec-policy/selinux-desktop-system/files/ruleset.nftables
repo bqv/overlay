@@ -227,3 +227,25 @@ table inet filter {
 		ct state established,related ct direction original meta oifname != "lo" ct secmark set meta secmark
 	}
 }
+
+# --- NetBird SSH: peers dial 22, its SSH server listens on 22022 -------------------
+#
+# netbird used to install this redirect itself (its netbird-rt-redirect chain). That went
+# away when DisableFirewall was set at the user request, because netbird firewall also
+# carried a per-IP allowlist of the reverse-proxy cluster which silently broke services on
+# nodes it did not list. The trust boundary is the interface (the input chain accepts
+# iifname "wt0" first), so only the redirect is carried here, not the allowlist.
+#
+# The two addresses are this peer stable overlay addresses.
+table ip nbssh {
+	chain pre {
+		type nat hook prerouting priority dstnat; policy accept;
+		iifname "wt0" tcp dport 22 ip daddr 100.103.181.204 dnat to 100.103.181.204:22022
+	}
+}
+table ip6 nbssh6 {
+	chain pre {
+		type nat hook prerouting priority dstnat; policy accept;
+		iifname "wt0" tcp dport 22 ip6 daddr fd0c:2ac9:3bf:ab84:9090:98d4:2694:d45f dnat to [fd0c:2ac9:3bf:ab84:9090:98d4:2694:d45f]:22022
+	}
+}
