@@ -30,6 +30,7 @@ gen_require(`
   type user_bin_t;
   type user_tmp_t;
   type git_xdg_config_t;
+  type java_tmp_t;
   type user_home_dir_t;
   type user_home_t;
   type user_runtime_t;
@@ -299,3 +300,12 @@ allow staff_sudo_t user_bin_t:file getattr;
 # git_xdg_config_t is a different type, hence the explicit row.
 userdom_map_user_tmp_files(staff_git_t)
 allow staff_git_t git_xdg_config_t:file map;
+
+# --- r52: the JVM mmaps its own perf-data file ---
+# /tmp/hsperfdata_stem/<pid> is the HotSpot shared performance counter file, which the JVM
+# creates and then mmaps read/write so other JVMs can read it. refpolicy's java module puts it
+# in java_tmp_t and userdom_user_tmp_file already gives staff_t read and write there, so the
+# only permission missing was map - three denials, all `comm="java" path="/tmp/hsperfdata_stem/..."`
+# with scontext staff_u:staff_r:staff_t. There is no interface for a single permission on that
+# type, so it is one explicit row.
+allow staff_t java_tmp_t:file map;

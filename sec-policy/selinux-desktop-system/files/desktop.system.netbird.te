@@ -52,6 +52,9 @@ gen_require(`
 	type mdns_packet_t;
 	type dhcpd_client_packet_t;
 	type su_exec_t;
+	type devpts_t;
+	type home_root_t;
+	type ptmx_t;
 	type local_login_t;
 	type login_exec_t;
 	type udev_runtime_t;
@@ -505,3 +508,56 @@ allow local_login_t netbird_t:fd use;
 # init_exec_t (one denial each since the login transition landed). su would run inside netbird_t with
 # no domain of its own, and exec of the init binary is not something a VPN client needs. If a
 # surviving session actually requires su, that denial will say so and it is one line.
+
+########################################
+# Round 15: the permissive window - the session pty, and the two probes released
+#
+# One permissive window on netbird_t (2026-10-10 21:39-21:44) collected everything the daemon
+# still wanted. It is the smallest round yet because the session path was already complete:
+# what remains is the terminal plumbing for a tunnel session, plus the two detection probes
+# that rounds 12-14 held back. Collected with
+#   ausearch -m AVC -ts 21:39:00 | grep 'permissive=1'
+# and every record in it is granted here. The window was disarmed and the policy reloaded in
+# the same pass - a permissive type is a store change and survives a reboot, so it must not be
+# left on.
+#
+# The pty for a session. netbird allocates the master itself, hands the slave to login and then
+# drives it, so it needs the master and the pty device. ptmx_t is /dev/ptmx, devpts_t is
+# /dev/pts/N; the set is the one init_daemons_use_tty gives the daemon attribute, which
+# netbird_t is not a member of, which is why the daemon had none of it.
+allow netbird_t ptmx_t:chr_file { ioctl open read write };
+allow netbird_t devpts_t:chr_file { ioctl open read write };
+
+# The login domain's half of the same terminal, and the pipe back to the daemon. local_login_t
+# inherits both descriptors, and fd use (round 14) is not enough to read or write through them:
+# the check is against the type of the file the descriptor points at, which is the same lesson
+# as "read without open is not enough", one class over.
+allow local_login_t devpts_t:chr_file { read write };
+allow local_login_t netbird_t:fifo_file { read write };
+
+# Resolving the user's home directory before starting the session. /home is home_root_t and only
+# search was refused, so the path lookup works without granting the listing.
+allow netbird_t home_root_t:dir search;
+
+# Its own pipes: read and write were granted in round 8, the stat() of the same pipe was not.
+allow netbird_t self:fifo_file getattr;
+
+# The two probes held since rounds 12-14, released on the owner's instruction to take the whole
+# window. The shape of each one decides how it is granted:
+#
+#   init_exec_t { execute } is faccessat2("/sbin/openrc-init", X_OK) - init-system detection, the
+#   same family as the /run/openrc and dbus-runtime lookups of round 4. It grants the X_OK check
+#   and nothing more: execute_no_trans is NOT granted, so the init binary still cannot be run, and
+#   a real execve would raise a fresh denial instead of succeeding quietly.
+allow netbird_t init_exec_t:file execute;
+
+#   su_exec_t is the SSH server version-probing the login chain (proctitle "netbird service run",
+#   child argv "su --help"). A plain grant would run su INSIDE netbird_t, because no transition is
+#   defined for it from here - and that is a change of confinement rather than an unblock:
+#   netbird_t holds net_admin, bpf and the packet types, while local_login_t is the session domain
+#   the tunnel already uses. So su gets the same destination as login: the file set is what the
+#   window measured, and the transition lands it in the session domain. The session path itself
+#   still uses login - this only stops the probe from being a hole if netbird ever prefers su.
+allow netbird_t su_exec_t:file { execute execute_no_trans map };
+type_transition netbird_t su_exec_t:process local_login_t;
+allow local_login_t su_exec_t:file entrypoint;
