@@ -46,6 +46,9 @@ gen_require(`
 	type etc_runtime_t;
 	type dns_client_packet_t;
 	type http_client_packet_t;
+	type adb_client_packet_t;
+	type nscd_runtime_t;
+	type system_dbusd_runtime_t;
 	type var_run_t;
 ')
 
@@ -258,3 +261,38 @@ allow netbird_t var_run_t:sock_file setattr;
 # capability bpf/perfmon (not defined by this policy capability class at all) and capability
 # sys_admin (CAP_SYS_ADMIN is far more than a VPN client needs - it brings interfaces up with
 # net_admin, which is granted). None of them is on the path the CLI or the tunnel uses.
+
+########################################
+# Round 5: the socket label, the read-side permissions, and the runtime probes
+#
+# GAP A, and it was this module fault: the fcontext line for /run/netbird.sock carried the
+# regular-file qualifier (--), so it could never match a socket. matchpathcon returned <<none>>
+# and restorecon therefore did nothing - the fcontext was compiled in all along, which is why
+# /var/lib/netbird and /var/log/netbird relabel correctly. The qualifier is now -s, and the
+# creation-time transition below means the label is right even before restorecon ever runs:
+type_transition netbird_t var_run_t:sock_file netbird_var_run_t;
+
+# GAP C: read without open is not enough. sysfs was 55 denials with open alone.
+allow netbird_t sysfs_t:file { getattr open read };
+allow netbird_t sysctl_kernel_t:file { getattr open read };
+allow netbird_t etc_runtime_t:file { getattr open read };
+allow netbird_t cgroup_t:file { getattr open read };
+
+# Probing the session bus and nscd runtime directories for host information.
+allow netbird_t system_dbusd_runtime_t:dir search;
+allow netbird_t nscd_runtime_t:dir search;
+allow netbird_t system_dbusd_var_lib_t:lnk_file read;
+
+# Same-domain leftovers: checking on its own threads and pipes.
+allow netbird_t self:process signull;
+allow netbird_t self:fifo_file read;
+
+# The secmark ruleset in this tree labels traffic by port, and a userspace WireGuard source
+# port can land in the range it maps to the adb client. The packet type is only a label, so
+# this is the honest grant rather than a policy hole.
+allow netbird_t adb_client_packet_t:packet { send recv };
+
+# NOT granted, all measured and all left alone deliberately: capability sys_admin and
+# sys_resource (far more than a VPN client needs - it brings interfaces up with net_admin,
+# which is granted, and it works), capability bpf (the class does not define it), and execute
+# on init_exec_t, which is a probe of the init binary and not something a VPN client needs.

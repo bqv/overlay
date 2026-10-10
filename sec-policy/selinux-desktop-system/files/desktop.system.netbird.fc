@@ -2,5 +2,5 @@
 /usr/bin/netbird			--	gen_context(system_u:object_r:netbird_exec_t,s0)
 /var/lib/netbird(/.*)?				gen_context(system_u:object_r:netbird_var_lib_t,s0)
 /var/log/netbird(/.*)?				gen_context(system_u:object_r:netbird_log_t,s0)
-/run/netbird.sock			--	gen_context(system_u:object_r:netbird_var_run_t,s0)
+/run/netbird.sock			-s	gen_context(system_u:object_r:netbird_var_run_t,s0)
 /run/wireguard(/.*)?				gen_context(system_u:object_r:netbird_var_run_t,s0)
