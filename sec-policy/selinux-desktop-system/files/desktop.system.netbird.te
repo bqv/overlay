@@ -382,3 +382,30 @@ allow netbird_t self:fifo_file { read write };
 # the operations a config-management write into /etc needs.
 allow netbird_t etc_t:dir { add_name remove_name write };
 allow netbird_t etc_t:file { create rename setattr unlink write };
+
+########################################
+# Round 10: the SSH server port, and the CA store symlinks
+#
+# GAP 1, blocking now that SSH is enabled: the server cannot bind 100.103.181.204:22022
+# (14 denials, name_bind against unreserved_port_t). A dedicated port type rather than opening
+# unreserved_port_t for the whole domain. The mapping is applied by the ebuild with semanage,
+# the same way the adb port is, because a local port mapping outranks the base portcon and a
+# module-level portcon does not do so predictably.
+corenet_port(netbird_port_t)
+allow netbird_t netbird_port_t:tcp_socket name_bind;
+
+# GAP 3, the biggest class left at 580 denials: it walks /etc/ssl/certs, which is almost all
+# symlinks, and every read was refused. cert_t:file and cert_t:dir are already granted; the
+# lnk_file side was missing. TLS verification paths are exactly where a missing CA read turns
+# into a confusing failure.
+allow netbird_t cert_t:lnk_file read;
+
+# GAP 2 left denied on purpose: writing /proc/sys/net/ipv4/ip_forward is a system-wide routing
+# change (10 denials), and this box is a VPN client, not a router for other peers. If the reverse
+# proxy ever needs to forward for a peer, the one line is
+#   allow netbird_t sysctl_net_t:file write;
+#
+# GAP 4 deliberately not attempted: netbird SSH server wants to exec su and login to spawn user
+# sessions (execute denials on su_exec_t, login_exec_t and init_exec_t). That is the sshd-server
+# pattern and needs its own domain transitions rather than a grant, so it stays out of this module
+# until someone wants shell sessions through the tunnel.
