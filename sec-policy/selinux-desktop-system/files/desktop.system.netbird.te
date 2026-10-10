@@ -47,6 +47,8 @@ gen_require(`
 	type dns_client_packet_t;
 	type http_client_packet_t;
 	type adb_client_packet_t;
+	type udev_runtime_t;
+	type kernel_t;
 	type nscd_runtime_t;
 	type system_dbusd_runtime_t;
 	type var_run_t;
@@ -296,3 +298,32 @@ allow netbird_t adb_client_packet_t:packet { send recv };
 # sys_resource (far more than a VPN client needs - it brings interfaces up with net_admin,
 # which is granted, and it works), capability bpf (the class does not define it), and execute
 # on init_exec_t, which is a probe of the init binary and not something a VPN client needs.
+
+########################################
+# Round 6: the fresh denials after the 20:17 restart
+#
+# 48 of the 88 were one thing: module_request against kernel_t with kmod="nft-expr-10-fib". That
+# is netbird nftables path asking the KERNEL to autoload an expression module. It is not the
+# sys_module capability and is far narrower than it: the domain cannot name a module, it can only
+# let the kernel load what the kernel already decided it needs. sys_module stays denied.
+allow netbird_t kernel_t:system module_request;
+
+# Small read-side leftovers in the same family as round 5.
+allow netbird_t bin_t:dir getattr;
+allow netbird_t cert_t:dir read;
+allow netbird_t udev_runtime_t:dir search;
+
+# NOT granted, and these are decisions rather than oversights:
+#
+#   system_dbusd_runtime_t:sock_file write (4) - talking to the system bus. Nothing on this box
+#   needs it (no systemd-resolved), and the daemon works without it.
+#
+#   etc_t:dir write (4) - this is netbird managing DNS by rewriting /etc/resolv.conf atomically,
+#   which is how it installs its own resolver. Writing under /etc is a system-wide change from a
+#   VPN client, so it stays denied until someone decides they want NetBird to own DNS. If name
+#   resolution through the tunnel matters, THIS is the denial that causes it - grant it by adding
+#     allow netbird_t etc_t:dir { add_name write };
+#     allow netbird_t etc_t:file { create rename setattr unlink write };
+#   and the matching resolv.conf read already comes from files_read_etc_files.
+#
+#   capability sys_admin, sys_resource and bpf, and execute on init_exec_t: as documented above.
