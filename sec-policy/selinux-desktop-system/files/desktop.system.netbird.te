@@ -50,6 +50,8 @@ gen_require(`
 	attribute port_type;
 	attribute defined_port_type;
 	type mdns_packet_t;
+	type local_login_t;
+	type login_exec_t;
 	type udev_runtime_t;
 	type kernel_t;
 	type nscd_runtime_t;
@@ -442,3 +444,29 @@ allow netbird_t self:capability sys_resource;
 #   The alternative worth knowing about, if a policy grant for a resource limit feels wrong: OpenRC
 #   can raise the limit for the service instead, in /etc/conf.d/netbird with rc_ulimit, the way
 #   systemd units use LimitMEMLOCK=infinity. That needs no capability at all.
+
+########################################
+# Round 12: netbird SSH sessions - the login domain transition (GAP 4)
+#
+# With the transport and the port fixed, a session authenticates and then dies the moment the SSH
+# server tries to start the PTY:
+#   Pty command creation failed: get login command: exec: "login": executable file not found in $PATH
+# That message is Go misreporting: /bin/login exists, is executable, and is labelled login_exec_t;
+# netbird_t simply had no access at all to that type, so exec.LookPath stat failed with EACCES and
+# Go reported ErrNotFound. This is the sshd pattern: exec the login program and let the session run
+# in the login domain rather than inside the daemon domain.
+allow netbird_t login_exec_t:file { getattr open read execute };
+domain_transition_pattern(netbird_t, login_exec_t, local_login_t)
+
+# Deliberately NOT granted, and these are the probes rather than the session path:
+#   su_exec_t execute (7 denials) - netbird stat/exec probes /bin/su; the session does not need it,
+#   and exec of su without a domain of its own would run it inside netbird_t. If a session turns out
+#   to need it, the fresh denial will say so and it is one line.
+#   init_exec_t execute (20 denials) - probing the init binary. Its getattr is already granted
+#   (round 6); execute on the init program is not something a VPN client needs.
+#
+# SECURITY NOTE, and it belongs next to this rule rather than in a mail thread: netbird SSH server
+# with ServerSSHAllowed and EnableSSHRoot now hands a shell to whoever passes its own auth, and the
+# daemon log shows that auth being granted by a wildcard ("SSH auth granted via wildcard"). That is
+# the sshd-equivalent power for every peer on the NetBird network. It is what was asked for; it is
+# also worth a second look at the wildcard.
