@@ -364,3 +364,21 @@ allow netbird_t self:fifo_file { read write };
 # a VPN client needs - it works without them), capability sys_module (module loading; the
 # kernel-mediated module_request above is the narrow way and is granted), execute on
 # init_exec_t, and system_dbusd_runtime_t sock_file write.
+
+########################################
+# Round 9: the SSH client config write (FIX 3)
+#
+# netbird keeps /etc/ssh/ssh_config.d/99-netbird.conf in sync so that `ssh <peer>` works through
+# the tunnel. It writes a temp file in that directory and renames it into place, so it needs the
+# directory operations plus the file operations on etc_t.
+#
+# Why not a dedicated type, which would be tidier: the file is read by ssh itself, which runs in
+# ssh_t, and by git over ssh. Moving it to a netbird type would take it away from those readers
+# unless every one of them is granted the new type, which is a spreading change for one config
+# file. Note also that SELinux type_transition rules cannot match a filename - the name in the
+# rule the handoff proposed would never have applied. The directory is the hook, not the name.
+#
+# So this is deliberate and coarse, and worth the comment: netbird runs as root, and these are
+# the operations a config-management write into /etc needs.
+allow netbird_t etc_t:dir { add_name remove_name write };
+allow netbird_t etc_t:file { create rename setattr unlink write };
