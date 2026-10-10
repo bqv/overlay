@@ -71,6 +71,7 @@ table inet filter {
 				68 : "dhcp_client",\
 				80 : "http_server",\
 				443 : "http_server",\
+				4443 : "http_client",\
 				546 : "dhcp_client",\
 				5353 : "mdns",\
 				5037 : "adb_server",\
@@ -89,6 +90,7 @@ table inet filter {
 				68 : "dhcp_client",\
 				80 : "http_client",\
 				443 : "http_client",\
+				4443 : "http_client",\
 				547 : "dhcp_client",\
 				5353 : "mdns",\
 				5037 : "adb_client",\
