@@ -50,6 +50,8 @@ gen_require(`
 	attribute port_type;
 	attribute defined_port_type;
 	type mdns_packet_t;
+	type dhcpd_client_packet_t;
+	type su_exec_t;
 	type local_login_t;
 	type login_exec_t;
 	type udev_runtime_t;
@@ -470,3 +472,21 @@ domain_transition_pattern(netbird_t, login_exec_t, local_login_t)
 # daemon log shows that auth being granted by a wildcard ("SSH auth granted via wildcard"). That is
 # the sshd-equivalent power for every peer on the NetBird network. It is what was asked for; it is
 # also worth a second look at the wildcard.
+
+########################################
+# Round 13: the login transition, written out
+#
+# Round 12 used domain_transition_pattern(netbird_t, login_exec_t, local_login_t) and it emitted
+# the file rule but NOT the type_transition: sesearch -T -s netbird_t showed only the socket
+# transition, which is why the session still died at the same place. Written out explicitly here,
+# with the two rules a transition needs to actually be usable. The load is verified before this is
+# committed, not just the compile.
+type_transition netbird_t login_exec_t:process local_login_t;
+allow netbird_t local_login_t:process transition;
+allow local_login_t login_exec_t:file entrypoint;
+
+# The /bin/su probe: attribute access only. No execute, so su cannot run inside netbird_t.
+allow netbird_t su_exec_t:file { getattr open read };
+
+# DHCP-shaped packets arriving on its own tunnel interface, same family as the rest.
+allow netbird_t dhcpd_client_packet_t:packet { send recv };
