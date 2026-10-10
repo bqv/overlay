@@ -1,0 +1,224 @@
+policy_module(desktop.system.netbird, 1.0)
+
+########################################
+#
+# NetBird VPN client daemon (net-vpn/netbird).
+#
+# A userspace WireGuard implementation, so it needs ordinary sockets plus a tun device, not
+# the kernel wg module. It runs as root, either from an init script or by hand through sudo,
+# and it used to run as sysadm_t, which is why every denial was sysadm_t against itself.
+#
+# The grants below are the measured denials from 2026-10-10 (130 of them, sysadm_t), minus
+# capability sys_module, which is deliberately withheld - see the note further down.
+#
+# The status CLI is the same binary at the same path, so it transitions into this domain too.
+# That is intentional: it is more confined than sysadm_t, and it only needs the terminal, the
+# config under /var/lib/netbird and the daemon socket, all granted here.
+#
+gen_require(`
+	type sysadm_t;
+	role sysadm_r;
+	role system_r;
+	type tun_tap_device_t;
+	type dynamic_packet_t;
+	type local_packet_t;
+	type initrc_t;
+	type cert_t;
+	type sysctl_net_t;
+	type net_conf_t;
+	type cgroup_t;
+	type var_log_t;
+	type var_lib_t;
+	type bin_t;
+	type iptables_t;
+	type iptables_exec_t;
+	type iptables_runtime_t;
+	type node_t;
+	type unreserved_port_t;
+	type dns_port_t;
+	type netport_port_t;
+	type dns_client_packet_t;
+	type http_client_packet_t;
+	type var_run_t;
+')
+
+type netbird_t;
+type netbird_exec_t;
+application_domain(netbird_t, netbird_exec_t)
+init_daemon_domain(netbird_t, netbird_exec_t)
+# The supported way to run it is the OpenRC unit, and a service started from an init script runs
+# in initrc_t, not init_t - which is why the service form stayed unconfined while the hand-run
+# form (sysadm_t, through the transition below) did not. This is the macro for that case.
+init_system_domain(netbird_t, netbird_exec_t)
+domtrans_pattern(sysadm_t, netbird_exec_t, netbird_t)
+role system_r types netbird_t;
+role sysadm_r types netbird_t;
+
+type netbird_var_lib_t;
+files_type(netbird_var_lib_t)
+type netbird_log_t;
+logging_log_file(netbird_log_t)
+type netbird_var_run_t;
+files_type(netbird_var_run_t)
+
+########################################
+# its own state, config and socket
+#
+# /var/lib/netbird/default.json is the saved profile, /run/wireguard/wt0.sock is the
+# userspace WireGuard control socket it creates and watches (the watch denial was on the old
+# var_run_t label), /var/log/netbird/client.log is its log.
+#
+manage_dirs_pattern(netbird_t, netbird_var_lib_t, netbird_var_lib_t)
+manage_files_pattern(netbird_t, netbird_var_lib_t, netbird_var_lib_t)
+manage_dirs_pattern(netbird_t, netbird_var_run_t, netbird_var_run_t)
+manage_sock_files_pattern(netbird_t, netbird_var_run_t, netbird_var_run_t)
+allow netbird_t netbird_var_run_t:sock_file watch;
+create_files_pattern(netbird_t, netbird_log_t, netbird_log_t)
+append_files_pattern(netbird_t, netbird_log_t, netbird_log_t)
+setattr_files_pattern(netbird_t, netbird_log_t, netbird_log_t)
+allow netbird_t self:unix_stream_socket { connectto read write getattr };
+
+########################################
+# the measured socket and packet denials
+#
+# netlink_generic_socket is wgctrl and the rest of its generic netlink use (61 denials);
+# netlink_netfilter_socket is the nftables path (3). Both are the domain own sockets, so the
+# full standard set costs nothing. bpf is the eBPF firewall path (22 map_create denials); the
+# five permissions are the same set NetworkManager and the container domains use.
+#
+allow netbird_t self:netlink_generic_socket { append bind connect create getattr getopt ioctl read setattr setopt shutdown write };
+allow netbird_t self:netlink_netfilter_socket { append bind connect create getattr getopt ioctl read setattr setopt shutdown write };
+allow netbird_t self:bpf { map_create map_read map_write prog_load prog_run };
+
+# Gateway and NAT discovery: SSDP to 239.255.255.250:1900 and NAT-PMP to the gateway on 5351
+# (17 send denials), plus the loopback receive side (3). dynamic_packet_t is this tree own
+# label for traffic on ports no map can name - exactly what a discovery probe is - and it is
+# already granted to mozilla_t, gajim_t, dhcpc_t and android_tools_t for the same reason.
+# local_packet_t is the tree loopback type.
+allow netbird_t dynamic_packet_t:packet { send recv };
+allow netbird_t local_packet_t:packet { send recv };
+
+########################################
+# the tun device and the rest of a network daemon
+#
+# /dev/net/tun is how userspace WireGuard gets its interface; the permission set is the one
+# NetworkManager uses on the same type.
+#
+allow netbird_t tun_tap_device_t:chr_file { append ioctl lock open read write };
+dev_read_urand(netbird_t)
+files_read_etc_files(netbird_t)
+miscfiles_read_localization(netbird_t)
+kernel_read_system_state(netbird_t)
+
+# A VPN client talks to a management server on 443, a signal server, STUN on 3478 and its
+# peers on whatever port they chose, so the all-ports macros are the honest description here;
+# the secmark packet types above are still what the ruleset labels that traffic with.
+corenet_tcp_connect_all_ports(netbird_t)
+corenet_tcp_sendrecv_all_ports(netbird_t)
+corenet_udp_sendrecv_all_ports(netbird_t)
+allow netbird_t self:tcp_socket create_socket_perms;
+allow netbird_t self:udp_socket create_socket_perms;
+allow netbird_t self:rawip_socket create_socket_perms;
+
+# It brings the interface up, programs routes and marks, and needs raw sockets for its own
+# probes. Not granted: sys_module.
+allow netbird_t self:capability { net_admin net_raw net_bind_service };
+
+# The log line is console,<file>, so it writes to the terminal it was started from as well.
+userdom_use_inherited_user_terminals(netbird_t)
+
+########################################
+# the status client, when it runs as sysadm_t
+#
+# With the transition above it is netbird_t itself, but a plain sudo run may still be checked
+# against the caller, so the ordinary client access is granted explicitly.
+#
+allow sysadm_t netbird_var_run_t:sock_file { write getattr read open };
+allow netbird_t sysadm_t:unix_stream_socket { read write getattr };
+
+########################################
+# DELIBERATELY NOT GRANTED: capability sys_module
+#
+# 20 of the denials are netbird trying to load the wireguard or tun module itself. This kernel
+# does not autoload tun, which is why the runbook modprobes tun before starting the daemon;
+# with that done the daemon is happy in userspace mode. sys_module is the right to load
+# arbitrary code into the kernel, so granting it would make this domain effectively
+# unconfined - far more than the daemon needs. Left denied on purpose.
+
+########################################
+# Round 2: what the daemon actually needs once confined
+#
+# One permissive-window run of the real daemon produced 4198 denials; this is that set,
+# grouped. Everything here is measured, with the count and the shape it appeared as.
+#
+# The CA store and the kernel network state it reads. cert_t alone was 2633 dir searches,
+# because it walks the certificate directories on every TLS setup.
+allow netbird_t cert_t:dir search;
+allow netbird_t cert_t:file { getattr open read };
+allow netbird_t sysctl_net_t:dir search;
+allow netbird_t sysctl_net_t:file { getattr open read };
+allow netbird_t net_conf_t:file { getattr open read };
+allow netbird_t cgroup_t:dir search;
+allow netbird_t var_log_t:dir search;
+allow netbird_t var_lib_t:dir search;
+
+# The firewall fallback path. When its nftables attempt does not take, netbird falls back to
+# running /sbin/iptables (comm=iptables appears in the audit), which is why bin_t needs a
+# search and iptables_exec_t needs the execute set; the child then reports back over a fifo
+# it holds with the daemon. iptables_runtime_t is that binary own lock and state.
+allow netbird_t bin_t:dir search;
+allow netbird_t bin_t:lnk_file read;
+allow netbird_t iptables_exec_t:file { execute execute_no_trans getattr open read map };
+allow netbird_t iptables_runtime_t:file { getattr lock open read };
+allow iptables_t netbird_t:fifo_file { getattr read write };
+
+# Routing and interface programming over rtnetlink, and the daemon own threads.
+allow netbird_t self:netlink_route_socket { bind create getattr nlmsg_read nlmsg_write read write };
+allow netbird_t self:process { getsched signal };
+
+# DELIBERATELY NOT GRANTED, and not grantable: capability bpf (CAP_BPF) and perfmon
+# (CAP_PERFMON). The audit shows 24 denials of each, but this policy capability class does not
+# define those two permissions at all - they postdate the class in the base policy, so the
+# compiler rejects any rule naming them. The bpf CLASS permissions above are a different thing
+# and are granted, so its maps and programs load; what is unavailable is the newer capability
+# gate around them. Fixing it means changing the class, which is a base policy matter, not this
+# module.
+
+# Both directions are needed: it serves DNS for the tunnel and receives the answers, so the
+# listen and accept side lives on its own stream sockets.
+userdom_use_inherited_user_terminals(netbird_t)
+allow netbird_t self:tcp_socket create_stream_socket_perms;
+allow netbird_t self:udp_socket create_socket_perms;
+allow netbird_t self:rawip_socket create_socket_perms;
+
+# The secmark labels this tree puts on ordinary outbound traffic: DNS lookups and HTTPS to the
+# management and signal services. Same shape as the discovery packets granted above.
+allow netbird_t dns_client_packet_t:packet { send recv };
+allow netbird_t http_client_packet_t:packet { send recv };
+
+# It binds ports: an unreserved one for userspace WireGuard, and 53 for the DNS service it
+# runs for the tunnel (hence dns_port_t and netport_port_t name_bind).
+allow netbird_t node_t:tcp_socket node_bind;
+allow netbird_t node_t:udp_socket node_bind;
+allow netbird_t unreserved_port_t:udp_socket name_bind;
+allow netbird_t dns_port_t:udp_socket name_bind;
+allow netbird_t dns_port_t:tcp_socket name_bind;
+allow netbird_t netport_port_t:udp_socket name_bind;
+
+########################################
+# Round 3: the socket between the daemon and the CLI
+#
+# The daemon creates /run/netbird.sock itself, so the file carries the plain var_run_t label (an
+# fcontext only applies at restorecon time and the socket is made fresh on every start), while
+# the socket object belongs to netbird_t. The CLI - run as root through sudo, hence sysadm_t -
+# needs connectto on that socket and write on the socket file. The earlier attempt granted those
+# against netbird_var_run_t, which the live system never has for this socket.
+#
+allow netbird_t var_run_t:dir { add_name getattr remove_name search write };
+allow netbird_t var_run_t:sock_file { create getattr read unlink write };
+allow sysadm_t var_run_t:sock_file { getattr open read write };
+allow sysadm_t netbird_t:unix_stream_socket { connectto getattr read write };
+allow netbird_t sysadm_t:unix_stream_socket { connectto getattr read write };
+
+# The same conversation when the daemon is started by hand, where both ends are netbird_t.
+allow netbird_t self:unix_stream_socket { listen accept };
