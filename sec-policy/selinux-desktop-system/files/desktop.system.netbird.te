@@ -47,6 +47,7 @@ gen_require(`
 	type dns_client_packet_t;
 	type http_client_packet_t;
 	type adb_client_packet_t;
+	type mdns_packet_t;
 	type udev_runtime_t;
 	type kernel_t;
 	type nscd_runtime_t;
@@ -341,3 +342,25 @@ allow netbird_t cert_t:file { getattr ioctl lock map open read };
 allow netbird_t udev_runtime_t:dir { getattr ioctl lock open read search };
 allow netbird_t udev_runtime_t:file { getattr ioctl lock map open read };
 allow netbird_t udev_runtime_t:lnk_file read;
+
+########################################
+# Round 8: the live loop, and a correction to this module own comments
+#
+# CORRECTION: rounds 1 and 4 claimed CAP_BPF and CAP_PERFMON were not grantable because this
+# policy capability class does not define them. That was wrong - I was reading the wrong class.
+# The kernel audit for the live denial says tclass=capability2, which is where the capabilities
+# above 31 live (CAP_PERFMON is 38, CAP_BPF is 39). They are perfectly expressible:
+allow netbird_t self:capability2 { bpf perfmon };
+
+# 30 denials, the largest family left: mDNS, for local peer discovery. This tree labels that
+# traffic mdns_packet_t and already grants it to mozilla_t, gajim_t, stremio_server_t, staff_t
+# and sysadm_t for the same reason.
+allow netbird_t mdns_packet_t:packet { send recv };
+
+# The pipe it holds with the iptables fallback child needs both directions.
+allow netbird_t self:fifo_file { read write };
+
+# Still deliberately denied: capability sys_admin and sys_resource (measured, but far more than
+# a VPN client needs - it works without them), capability sys_module (module loading; the
+# kernel-mediated module_request above is the narrow way and is granted), execute on
+# init_exec_t, and system_dbusd_runtime_t sock_file write.
