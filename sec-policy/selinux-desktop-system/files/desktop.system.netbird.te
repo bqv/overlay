@@ -37,6 +37,13 @@ gen_require(`
 	type unreserved_port_t;
 	type dns_port_t;
 	type netport_port_t;
+	type sysfs_t;
+	type proc_t;
+	type sysctl_kernel_t;
+	type init_runtime_t;
+	type init_exec_t;
+	type system_dbusd_var_lib_t;
+	type etc_runtime_t;
 	type dns_client_packet_t;
 	type http_client_packet_t;
 	type var_run_t;
@@ -222,3 +229,32 @@ allow netbird_t sysadm_t:unix_stream_socket { connectto getattr read write };
 
 # The same conversation when the daemon is started by hand, where both ends are netbird_t.
 allow netbird_t self:unix_stream_socket { listen accept };
+
+########################################
+# Round 4: the last 45, from the service-form daemon running in netbird_t
+#
+# These are what remained once the daemon was actually confined and running as a service, short
+# of the window-era records. Two families: probing the host, and its own files.
+#
+# It reads sysfs for interface identity (the id symlinks alone were 19 denials), /proc for
+# system state, cgroup limits, the machine id, and it detects which init system it is under -
+# /run/openrc, /sbin/openrc-init, the dbus runtime directory. All read-only lookups.
+allow netbird_t sysfs_t:dir read;
+allow netbird_t sysfs_t:file read;
+allow netbird_t sysfs_t:lnk_file read;
+allow netbird_t proc_t:filesystem getattr;
+allow netbird_t sysctl_kernel_t:dir search;
+allow netbird_t cgroup_t:file read;
+allow netbird_t etc_runtime_t:file read;
+allow netbird_t init_runtime_t:dir search;
+allow netbird_t init_exec_t:file getattr;
+allow netbird_t system_dbusd_var_lib_t:dir search;
+
+# Its own log directory listing, and chown/chmod on the socket it just created in /run.
+allow netbird_t netbird_log_t:dir read;
+allow netbird_t var_run_t:sock_file setattr;
+
+# Still denied on purpose, and now the only ones left: capability sys_module (module loading),
+# capability bpf/perfmon (not defined by this policy capability class at all) and capability
+# sys_admin (CAP_SYS_ADMIN is far more than a VPN client needs - it brings interfaces up with
+# net_admin, which is granted). None of them is on the path the CLI or the tunnel uses.
