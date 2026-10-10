@@ -412,3 +412,33 @@ allow netbird_t cert_t:lnk_file read;
 # sessions (execute denials on su_exec_t, login_exec_t and init_exec_t). That is the sshd-server
 # pattern and needs its own domain transitions rather than a grant, so it stays out of this module
 # until someone wants shell sessions through the tunnel.
+
+########################################
+# Round 11: CAP_SYS_RESOURCE, because the eBPF proxy is not initialising
+#
+# The daemon runs with RLIMIT_MEMLOCK soft = hard = 8 MiB. Raising the soft limit up to the hard
+# limit needs no privilege, but netbird asks for more than that, and CAP_SYS_RESOURCE is what the
+# kernel requires to exceed the hard limit. SELinux refused it, so
+#   WARN wgproxy/factory_kernel.go: failed to initialize ebpf proxy, fallback to user space proxy:
+#        failed to set memlock rlimit: operation not permitted
+# and the eBPF WireGuard proxy never came up. That matters functionally, not cosmetically: every
+# peer connection was Relayed with no ICE candidates, and a reverse-proxy service on a node that
+# never connected cannot reach this machine.
+allow netbird_t self:capability sys_resource;
+
+# NOT added here, with reasons:
+#
+#   capability bpf (CAP_BPF, 39) is ALREADY granted - see round 8, where the correction was that
+#   the capability above 31 live in the capability2 class:
+#       allow netbird_t self:capability2 { bpf perfmon };
+#   So of the three capabilities in the request, only sys_resource was actually missing.
+#
+#   capability sys_admin (CAP_SYS_ADMIN, 21) is deliberately held back. The denial in this path is
+#   the memlock raise, which is CAP_SYS_RESOURCE and nothing else; CAP_SYS_ADMIN is mount, setns,
+#   sethostname and much more, and a VPN client has no concrete need for it here. If the proxy
+#   still falls back after this round, the next denial will name exactly what is missing and it is
+#   a one-line round to add.
+#
+#   The alternative worth knowing about, if a policy grant for a resource limit feels wrong: OpenRC
+#   can raise the limit for the service instead, in /etc/conf.d/netbird with rc_ulimit, the way
+#   systemd units use LimitMEMLOCK=infinity. That needs no capability at all.
