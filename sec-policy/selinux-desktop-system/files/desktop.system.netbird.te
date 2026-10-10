@@ -47,6 +47,8 @@ gen_require(`
 	type dns_client_packet_t;
 	type http_client_packet_t;
 	type adb_client_packet_t;
+	attribute port_type;
+	attribute defined_port_type;
 	type mdns_packet_t;
 	type udev_runtime_t;
 	type kernel_t;
@@ -391,6 +393,7 @@ allow netbird_t etc_t:file { create rename setattr unlink write };
 # unreserved_port_t for the whole domain. The mapping is applied by the ebuild with semanage,
 # the same way the adb port is, because a local port mapping outranks the base portcon and a
 # module-level portcon does not do so predictably.
+type netbird_port_t, defined_port_type, port_type;
 corenet_port(netbird_port_t)
 allow netbird_t netbird_port_t:tcp_socket name_bind;
 
