@@ -490,3 +490,18 @@ allow netbird_t su_exec_t:file { getattr open read };
 
 # DHCP-shaped packets arriving on its own tunnel interface, same family as the rest.
 allow netbird_t dhcpd_client_packet_t:packet { send recv };
+
+########################################
+# Round 14: the login domain inherits netbird's file descriptors
+#
+# The transition from round 13 works - a session now runs in local_login_t, and the first thing it
+# does is exactly what the earlier pty work recorded for staff_screen_t:
+#   denied { use } for local_login_t -> netbird_t | fd   (4 denials)
+# The login shell inherits the pty and the connection socket from the daemon, and using a
+# descriptor that came from another domain is an fd check against that domain.
+allow local_login_t netbird_t:fd use;
+
+# Still held, and both are single probes rather than the session path: execute on su_exec_t and on
+# init_exec_t (one denial each since the login transition landed). su would run inside netbird_t with
+# no domain of its own, and exec of the init binary is not something a VPN client needs. If a
+# surviving session actually requires su, that denial will say so and it is one line.
