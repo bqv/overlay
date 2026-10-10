@@ -327,3 +327,17 @@ allow netbird_t udev_runtime_t:dir search;
 #   and the matching resolv.conf read already comes from files_read_etc_files.
 #
 #   capability sys_admin, sys_resource and bpf, and execute on init_exec_t: as documented above.
+
+########################################
+# Round 7: complete the read families instead of one permission at a time
+#
+# Rounds 5 and 6 each granted the permission that had just been denied, and the daemon then
+# asked for the NEXT one in the family - cert_t:dir open after read+search, udev_runtime_t:file
+# read after dir search. That is the same crawl the older user_tmpfs_t work recorded (read,
+# then open, then getattr). These are the whole read families for the two types it polls, so
+# the loop stops instead of advancing.
+allow netbird_t cert_t:dir { getattr ioctl lock open read search };
+allow netbird_t cert_t:file { getattr ioctl lock map open read };
+allow netbird_t udev_runtime_t:dir { getattr ioctl lock open read search };
+allow netbird_t udev_runtime_t:file { getattr ioctl lock map open read };
+allow netbird_t udev_runtime_t:lnk_file read;
