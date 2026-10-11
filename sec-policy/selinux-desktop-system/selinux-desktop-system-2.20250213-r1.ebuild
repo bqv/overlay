@@ -14,7 +14,7 @@ POLICY_FILES="
 	desktop.system.remote.te
 	desktop.system.portage.te
 	desktop.system.selinux.te
-	desktop.system.tools.te
+	desktop.system.tools.te desktop.system.tools.fc
 	desktop.system.boot.te
 	desktop.system.greet.te desktop.system.greet.fc
 	desktop.system.mosh.if desktop.system.mosh.te desktop.system.mosh.fc

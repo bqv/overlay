@@ -1,0 +1,15 @@
+# The Zig toolchain, installed from the upstream tarball into /opt.
+#
+# That tarball puts the compiler at the TOP of its directory - there is no bin/
+# subdirectory - so no base-policy rule reaches it and it keeps usr_t, which is not
+# an exec type. Nothing complains until something probes executability: eselect's zig
+# module builds its list with [[ -x /usr/bin/zig-bin-* ]], follows the symlink to this
+# binary, and gets EACCES, so `sudo eselect zig list` printed "(none found)" and `set`
+# rejected the target. The same command as the user worked - the difference was the
+# domain (staff_t has usr_t execute somewhere in its inherited grants, sysadm_t does
+# not), not the file's permissions (measured 2026-10-11).
+#
+# bin_t is the honest label for a compiler binary (gcc is bin_t), and it is what lets
+# every domain that may execute ordinary binaries see it as executable: staff_t,
+# sysadm_t, and the portage domains that an ebuild shelling out to zig would use.
+/opt/zig-bin-[^/]*/zig	--	gen_context(system_u:object_r:bin_t,s0)
