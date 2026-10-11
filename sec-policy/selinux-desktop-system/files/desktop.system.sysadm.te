@@ -20,6 +20,7 @@ gen_require(`
   type user_t;
   attribute domain;
   class fifo_file { getattr ioctl open read unlink write };
+  class netlink_generic_socket { append bind connect create getattr getopt ioctl read setattr setopt shutdown write };
   class process { getcap noatsecure rlimitinh setexec siginh transition };
 ')
 
@@ -66,3 +67,27 @@ getattr_files_pattern(sysadm_t, nsfs_t, nsfs_t)
 # type sysadm_screen_t in its gen_require, files_search_default at line 31), so
 # the transition permission on that pair belongs here.
 allow sysadm_t sysadm_screen_t:process { noatsecure rlimitinh siginh };
+
+# --- r58: wg needs a generic netlink socket, and sysadm_t had none ---
+#
+# Measured 2026-10-12 (handed over raw): `sudo -n wg-quick up wg0` got as far as
+# `wg addconf wg0 /dev/fd/63` and then failed with "Unable to modify interface: Permission denied",
+# tearing the interface down again:
+#
+#   avc: denied { create } for comm="wg" scontext=staff_u:sysadm_r:sysadm_t
+#        tcontext=staff_u:sysadm_r:sysadm_t tclass=netlink_generic_socket
+#   syscall=41(AF_NETLINK/SOCK_RAW/NETLINK_GENERIC=16) success=no exit=-13
+#
+# `ip link add dev wg0 type wireguard` (rtnetlink) succeeded just before it, so what was missing is the
+# generic-netlink half of the WireGuard API, not netlink as a whole. wg talks to the kernel wireguard
+# family over NETLINK_GENERIC; rtnetlink only creates the interface.
+#
+# The permission set is the one already measured for the same API one package over: netbird's wgctrl
+# path uses the identical family, and this is that set (desktop.system.netbird round 2). refpolicy's own
+# wireguard module grants its domain create_socket_perms on this class for the same reason - but that
+# module is NOT in this box base policy: wireguard_t does not exist in the loaded policy and
+# /usr/bin/wg is bin_t rather than wireguard_exec_t, so wg runs in the caller's domain and the caller
+# is the one that has to open the socket. Enabling (or vendoring) that module would confine wg to a
+# wireguard_t of its own instead; until then this is the grant that makes the tool work, and it is the
+# same shape the session domain already has next door in desktop.system.staff.te.
+allow sysadm_t self:netlink_generic_socket { append bind connect create getattr getopt ioctl read setattr setopt shutdown write };
