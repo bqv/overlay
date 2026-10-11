@@ -7,8 +7,12 @@
 # the type, not the path: android_tools_domtrans(staff_t) grants the entrypoint on
 # android_tools_exec_t.
 /usr/bin/adb					--	gen_context(system_u:object_r:android_tools_exec_t,s0)
-# The rest of the SDK stays bin_t: fastboot needs the same treatment if it is ever used
-# against a USB device, but nothing has measured that yet.
+# r56: fastboot is bin_t in the system package and usr_t in the SDK, so it inherited the caller's
+# domain and was denied usb_device_t write. It is a pure USB client, so it goes to the same domain
+# as adb - but with its own exec type, because android_tools_exec_t's staff_t transition is
+# adbtrack_t's alone since r42 (see desktop.home.adb.te, r56).
+/usr/bin/fastboot				--	gen_context(system_u:object_r:fastboot_exec_t,s0)
+/opt/android-sdk/platform-tools/fastboot	--	gen_context(system_u:object_r:fastboot_exec_t,s0)
 # r42: the service binary gets its own domain, so "who may become the adb server domain" has an
 # answer other than "anything in the session".
 /home/user/bin/adbtrack			--	gen_context(system_u:object_r:adbtrack_exec_t,s0)

@@ -255,3 +255,45 @@ allow adbtrack_t user_runtime_t:file { create getattr lock open read rename writ
 # and { sigkill } x6 from the stop attempts, and they are the proof of this grant:
 #   /proc/<pid>/attr/current said adbtrack_t, uid 1000, and kill returned EPERM as staff_t.
 allow staff_t adbtrack_t:process { signal sigkill signull };
+
+# --- r56: fastboot, the other half of android-tools ---
+#
+# Measured 2026-10-11: `fastboot devices` from a staff_u session printed the usual
+# "no permissions (user stem is not in the plugdev group)" - fastboot's canned EACCES text, not a
+# group problem (stem is in group usb, and the node is root:android 0664). The audit shows what it
+# actually is, once per node the scan probes:
+#
+#   avc: denied { write } for comm="fastboot" name="012" dev="devtmpfs"
+#        scontext=staff_u:staff_r:staff_t tcontext=system_u:object_r:usb_device_t tclass=chr_file
+#
+# /usr/bin/fastboot was bin_t, so it inherited the caller's domain. staff_t holds usb_device_t
+# chr_file write only under the user_write_removable boolean, and that is off here (getsebool).
+# Turning it on would hand the whole session write access to every USB node, keyboard and mouse
+# included - the widening r35 deliberately removed - so it is not the fix.
+#
+# fastboot is a pure client: it talks to the device over USB and never to the adb server, so it
+# belongs in android_tools_t, which already holds usb_device_t rw unconditionally. It gets its own
+# exec type rather than sharing android_tools_exec_t, because r42 made that type's staff_t
+# transition adbtrack_t's alone; reusing it would either deny the exec from a session or reopen
+# "any session process may become the adb-server domain".
+type fastboot_exec_t;
+application_executable_file(fastboot_exec_t)
+type_transition staff_t fastboot_exec_t:process android_tools_t;
+allow staff_t android_tools_t:process transition;
+# Measured immediately afterwards: the transition lands (the denial's own scontext becomes
+# android_tools_t), and fastboot then dies on the next permission - SIGSEGV, with
+#   avc: denied { map } for comm="fastboot" path="/usr/bin/fastboot"
+#        scontext=staff_u:staff_r:android_tools_t tcontext=fastboot_exec_t tclass=file
+# entrypoint is the entry side only: the process that results is an ordinary program in that
+# domain and still has to map its own binary. The model is the session domain's own rule for
+# login_exec_t, which carries { entrypoint execute map } for exactly this reason.
+# The crawl, measured one permission at a time before granting the family: entrypoint alone ->
+# `{ map }` denied -> SIGSEGV; entrypoint+execute+map -> `{ read }` denied -> SIGSEGV again. A
+# program in this domain reads and maps its own binary, so the whole own-executable family goes in
+# at once rather than a fourth round. Same lesson as the cert_t/udev_t read families elsewhere in
+# this tree: grant the family, not the permission that was denied last.
+allow android_tools_t fastboot_exec_t:file { entrypoint execute getattr ioctl lock map open read };
+#
+# staff_t only, deliberately: the reported use is the session user's own `fastboot`. `sudo
+# fastboot` runs as sysadm_t, which has no usb_device_t write either; the same three rules with
+# sysadm_t in place of staff_t would open that path if it is ever wanted.
