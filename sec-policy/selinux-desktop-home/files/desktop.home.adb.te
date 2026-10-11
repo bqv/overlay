@@ -4,6 +4,8 @@ gen_require(`
 	type android_tools_t;
 	type staff_t;
 	type staff_screen_t;
+	type staff_sudo_t;
+	type sysadm_t;
 	type dynamic_packet_t;
 	type mdns_packet_t;
 	type local_packet_t;
@@ -12,6 +14,7 @@ gen_require(`
 	type user_home_t;
 	type user_runtime_t;
 	role staff_r;
+	role sysadm_r;
 	attribute defined_port_type;
 	attribute port_type;
 ')
@@ -294,6 +297,57 @@ allow staff_t android_tools_t:process transition;
 # this tree: grant the family, not the permission that was denied last.
 allow android_tools_t fastboot_exec_t:file { entrypoint execute getattr ioctl lock map open read };
 #
-# staff_t only, deliberately: the reported use is the session user's own `fastboot`. `sudo
-# fastboot` runs as sysadm_t, which has no usb_device_t write either; the same three rules with
-# sysadm_t in place of staff_t would open that path if it is ever wanted.
+# r56b: and the admin path, because the owner's next command was `sudo fastboot` - root runs as
+# sysadm_t, which has no usb_device_t write either (measured the same way, the same { write }
+# denial with scontext=staff_u:sysadm_r:sysadm_t). The target-side rule above is source
+# independent, so this needs only the role association and the transition: android_tools_t was
+# not a valid type for sysadm_r at all (seinfo -r sysadm_r | grep -c android_tools_t -> 0), and
+# without that the transition is refused even with the type_transition in place.
+#
+# This is a narrowing for the admin path, not a widening: sysadm_t is the broad admin domain and
+# android_tools_t is the narrow device-tool one, so `sudo fastboot` runs with less privilege than
+# the caller had. It does not open `sudo adb`: the adb transition is android_tools_domtrans, which
+# belongs to adbtrack_t alone (r42).
+role sysadm_r types android_tools_t;
+type_transition sysadm_t fastboot_exec_t:process android_tools_t;
+allow sysadm_t android_tools_t:process transition;
+
+# The rest of the pair, mirrored from what the working staff_t path has next door - the transition
+# alone is not enough, and the sysadm_t side was missing exactly these:
+#
+#   allow staff_t android_tools_t:process { getattr ptrace sigchld sigkill signal signull sigstop transition };
+#   allow android_tools_t staff_t:fd use;
+#
+# The { use } denial is what made `sudo fastboot` die with SIGSEGV while the same binary from a
+# session worked: the child could not use the descriptors sudo handed it
+#   avc: denied { use } for comm="fastboot" path="/usr/bin/fastboot"
+#        scontext=staff_u:sysadm_r:android_tools_t tcontext=staff_u:sysadm_r:sysadm_t tclass=fd
+# noatsecure/rlimitinh/siginh are the three check-only perms every domain transition meets; denying
+# them only means the kernel skips the inheritance, which is a deviation from normal behaviour rather
+# than a saving, so they are allowed here rather than dontaudited.
+allow sysadm_t android_tools_t:process { noatsecure rlimitinh siginh };
+allow android_tools_t sysadm_t:fd use;
+
+# And the supervisor's side of the same pair. `timeout 30 sudo -n fastboot ...` could not reap its
+# child at all, and sudo said so itself:
+#   sudo: kill(4000323, SIGTERM): Permission denied   /   kill(..., SIGCONT): Permission denied
+#   avc: denied { signal } for comm="sudo" scontext=staff_u:staff_r:staff_sudo_t tcontext=android_tools_t
+# The process holding the USB interface is sudo's child (android_tools_t) while sudo itself is
+# staff_sudo_t, so that is the pair that needs it - the same shape as the session's own
+# `allow staff_t android_tools_t:process { ... sigkill signal signull ... }` next door. Without it a
+# hung fastboot survives its timeout and keeps the interface claimed, which is what made the next
+# invocation sit at "< waiting for 91e25acb>" while `fastboot devices` still listed the handset.
+allow staff_sudo_t android_tools_t:process { signal sigkill signull sigstop };
+allow sysadm_t android_tools_t:process { getattr sigchld sigkill signal signull sigstop };
+
+# r56c: a file handed to fastboot - an image to flash, or a dump to write - usually lives in the
+# user's scratch directory, and android_tools_t had the FILE perms there but not the lookup in front
+# of them. Measured on another session's fastboot reading /home/user/tmp/handset-vbmeta.img:
+#
+#   avc: denied { search } for comm="fastboot" name="tmp" dev="sda7"
+#        scontext=staff_u:staff_r:android_tools_t tcontext=staff_u:object_r:user_tmp_t tclass=dir
+#   PATH: /home/user/tmp/handset-vbmeta.img      CWD: /home/user/tmp
+#
+# The file set was already granted by the r35b window; without the directory search the open() fails
+# before that check is ever reached. search is the whole need - a named path needs no listing.
+allow android_tools_t user_tmp_t:dir search;
