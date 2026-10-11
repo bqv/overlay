@@ -560,4 +560,16 @@ allow netbird_t init_exec_t:file execute;
 #   still uses login - this only stops the probe from being a hole if netbird ever prefers su.
 allow netbird_t su_exec_t:file { execute execute_no_trans map };
 type_transition netbird_t su_exec_t:process local_login_t;
-allow local_login_t su_exec_t:file entrypoint;
+allow local_login_t su_exec_t:file { entrypoint execute map };
+
+########################################
+# Round 16: the su transition target needs the read side too
+#
+# Round 15 sent su into local_login_t, and the next boot's audit shows the transition working and
+# then stopping one permission short:
+#   avc: denied { map } for comm="su" path="/bin/su"
+#        scontext=system_u:system_r:local_login_t tcontext=su_exec_t tclass=file
+# entrypoint lets local_login_t BE ENTERED through su_exec_t, but what results is an ordinary
+# program in that domain, and it still has to map its own binary. The model is the rule next door:
+# login_exec_t carries { entrypoint execute map } for this domain, for the same reason. Matched to
+# it exactly, which also subsumes the narrower entrypoint-only line from round 15.
