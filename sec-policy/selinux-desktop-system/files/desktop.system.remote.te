@@ -8,6 +8,7 @@ gen_require(`
   type ssh_t;
   type sshd_t;
   type local_packet_t;
+  type dynamic_packet_t;
   type staff_t;
   type sysadm_t;
   type user_home_t;
@@ -76,3 +77,31 @@ allow sshd_t staff_t:process signull;
 # against netbird_t would have been a no-op - that one has been in since the module first loaded
 # (allow netbird_t local_packet_t:packet { recv send };). Loopback only, so the scope is small.
 allow sshd_t local_packet_t:packet { send recv };
+
+# r59: the same mechanism, one packet label over - the WireGuard tunnel.
+#
+# Measured 2026-10-12 (handed over raw): SSH from zeta to delta over the tunnel timed out while HTTP
+# to delta:8080 over the same tunnel worked. The audit repeated this once a second for ~40 s, two
+# kworker pids alternating, same tuple:
+#
+#   avc: denied { send } for comm="kworker/1:2" saddr=192.168.1.110 src=59278 daddr=31.58.214.93
+#        dest=51820 netif=eno1 scontext=system_u:system_r:sshd_t tcontext=system_u:object_r:dynamic_packet_t
+#        tclass=packet
+#
+# That is the ENCAPSULATED packet: src=59278 is wireguard's UDP source port on delta, dest=51820 is
+# zeta. The kernel's wireguard transmit path runs in a kworker, but the skb still carries the socket
+# it came from - sshd's - which is why the check names sshd_t at all. And the tunnel's transport port
+# is in neither secmark map, so it falls to the chains' catch-all, dynamic_packet_t, which sshd_t had
+# no rule for.
+#
+# Why HTTP on 8080 worked and SSH did not: the thing serving 8080 here is a staff_t process (the DSH
+# gate), and staff_t already holds dynamic_packet_t send and recv; sshd_t did not. nginx_t holds
+# neither, which is consistent with the local nginx having been retired from this path.
+#
+# The wider shape of the fix, and what was deliberately not done: naming 51820 in the secmark maps
+# would need a NEW packet type (no existing secmark describes a VPN transport) plus the same grant for
+# every domain whose traffic crosses the tunnel - staff_t's gate included - or the working HTTP path
+# would break. That is a bigger change than the measured failure needs, and this one line is what the
+# domains that already work through the tunnel have. If the tunnel should ever be its own packet class,
+# that is the round to plan, not this one.
+allow sshd_t dynamic_packet_t:packet { send recv };
