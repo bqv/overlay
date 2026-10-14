@@ -58,6 +58,29 @@ search_dirs_pattern(ssh_t, user_tmpfs_t, user_tmpfs_t)
 mmap_read_files_pattern(ssh_t, portage_tmp_t, portage_tmp_t)
 read_files_pattern(ssh_t, ssh_home_t, ssh_home_t)
 search_dirs_pattern(ssh_t, user_home_t, user_home_t)
+
+# r60: ssh may read and write a host-keys file the user NAMES, not only ~/.ssh/known_hosts.
+#
+# Measured 2026-10-12, handed over raw from the pigeonnode session and reproduced here with a
+# host-key-only connection (no credentials, no session):
+#   Failed to add the host to the list of known hosts (.../.scratch/known_hosts).
+#   avc: denied { read } / { read append } for comm="ssh" name="known_hosts"
+#        scontext=staff_u:staff_r:ssh_t tcontext=staff_u:object_r:user_home_t tclass=file
+#   avc: denied { write } for comm="ssh" name=".scratch"
+#        scontext=staff_u:staff_r:ssh_t tcontext=staff_u:object_r:user_home_t tclass=dir
+#
+# The shell could do all of it; ssh runs in ssh_t, which manages the user's SSH files (ssh_home_t,
+# read and managed a few lines up) but had nothing beyond dir getattr/open/search anywhere else in the
+# home tree. ssh reports the consequence as EACCES on a file its own user owns, which is what makes it
+# look like a permissions problem rather than a policy one.
+#
+# -o UserKnownHostsFile is the ordinary way to keep per-project host keys, so this is the read side for
+# whatever path the user names, plus the write side an alternate known_hosts needs: append to an
+# existing file, and create it when it is absent (the directory write check is O_CREAT's, and add_name
+# is its other half). Compare ssh_home_t's own rule for the same two operations.
+userdom_read_user_home_content_files(ssh_t)
+allow ssh_t user_home_t:file { append create setattr write };
+allow ssh_t user_home_t:dir { add_name write };
 # sshd is the lockout-critical service: it records its state and signals the
 # session's processes. Writing /run state is ordinary daemon behaviour.
 allow sshd_t initrc_state_t:file { create unlink write };
