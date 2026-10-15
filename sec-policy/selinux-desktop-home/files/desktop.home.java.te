@@ -69,6 +69,30 @@ userdom_exec_user_home_content_files(java_t)
 # this one exec type. There is no transition out of java_t for git_exec_t, so execute_no_trans belongs
 # in it. Same shape as the netbird module's iptables_exec_t grant for its own tool.
 allow java_t git_exec_t:file { execute execute_no_trans getattr ioctl lock map open read };
+
+# r64: two more gaps on the same Android build - one of them the actual blocker.
+#
+# (B) WHY NINJA DIED, and it is the process group: java_t had no setpgid on itself, so ninja's
+# posix_spawn - which glibc implements with POSIX_SPAWN_SETPGROUP, i.e. setpgid(0,0) in the child - failed
+# with EACCES, and cmake's try-compile reported
+#   Run Build Command(s): ninja cmTC_bbbaa
+#   ninja: fatal: posix_spawn: Permission denied
+#   avc: denied { setpgid } for comm="ninja" scontext=java_t tcontext=java_t tclass=process
+# java_t self:process held { execmem fork getsched setsched sigchld sigkill signal signull sigstop } -
+# every part of spawning a child except the process group. Reproduced here in seconds instead of ten
+# minutes by running the SDK's own ninja over a two-line build.ninja from java_t; the same failure, the
+# same AVC.
+allow java_t self:process setpgid;
+#
+# (A) THE LOUD ONE, 139 denials in a five-minute window, all the same object, from every comm that walks
+# PATH (bash 55, make 44, ndk-build 20, cmake 15, clang++ 3, clang 2):
+#   avc: denied { read } for comm="cmake" name="bin" tcontext=user_bin_t tclass=lnk_file
+# /home/user/.local/bin is a symlink to /home/user/bin (user_bin_t) and is the FIRST entry in the
+# inherited PATH, so every tool readlink()s it before it can skip the entry. Harmless to the build - a
+# shell skips what it cannot stat - but the PATH is the user's own and the build is meant to walk it.
+# This is the interface for exactly that (exec + lnk_file read + home search), the same one the staff
+# side uses, rather than inventing a perms list.
+userdom_exec_user_bin_files(java_t)
 allow java_t user_home_t:dir watch;
 # ~/tmp is the build's scratch space (create/unlink/lock/map on the tmpfs mount)
 manage_dirs_pattern(java_t, user_tmpfs_t, user_tmpfs_t)
