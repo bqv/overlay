@@ -6,6 +6,7 @@ gen_require(`
   type etc_runtime_t;
   type git_home_t;
   type java_t;
+  type git_exec_t;
   type lib_t;
   type local_packet_t;
   type shell_exec_t;
@@ -49,6 +50,25 @@ userdom_manage_user_home_content_dirs(java_t)
 # Gradle/Flutter build read and write its toolchains and never run them. Same gap and same interface as
 # git's hooks, a few modules over.
 userdom_exec_user_home_content_files(java_t)
+
+# r63: java_t could not even LOOK at git, because the real binary is git_exec_t and not bin_t.
+#
+# Measured 2026-10-15, handed over with its AVCs: `flutter build apk --release` still failed at
+# :app:compileFlutterBuildRelease, now with
+#   Error: Unable to find git in your PATH.       (flutter/bin/internal/shared.sh: `hash git`)
+# /usr/bin/git is a symlink to ../libexec/git-core/git, and refpolicy labels the real git binaries
+# git_exec_t. java_t had nothing at all for that type - not even getattr, which is what a PATH probe
+# needs - so `command -v git` printed nothing and a shell reported "command not found":
+#   avc: denied { getattr } for comm="bash" path="/usr/libexec/git-core/git" tcontext=git_exec_t
+#   avc: denied { execute } / { read } for the same file
+# From a staff_t shell the same commands work (base grants git_exec_t there), which is what made it
+# look like a PATH problem rather than a policy one.
+#
+# The set is not invented: it is exactly what java_t already holds for ordinary binaries
+# (allow java_t bin_t:file { execute execute_no_trans getattr ioctl lock map open read }), applied to
+# this one exec type. There is no transition out of java_t for git_exec_t, so execute_no_trans belongs
+# in it. Same shape as the netbird module's iptables_exec_t grant for its own tool.
+allow java_t git_exec_t:file { execute execute_no_trans getattr ioctl lock map open read };
 allow java_t user_home_t:dir watch;
 # ~/tmp is the build's scratch space (create/unlink/lock/map on the tmpfs mount)
 manage_dirs_pattern(java_t, user_tmpfs_t, user_tmpfs_t)
