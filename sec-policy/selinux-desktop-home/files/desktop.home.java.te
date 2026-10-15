@@ -33,6 +33,22 @@ gen_require(`
 # that build ran; none of it is speculative.
 userdom_manage_user_home_content_files(java_t)
 userdom_manage_user_home_content_dirs(java_t)
+
+# r62: java_t may MANAGE the user's home content but not EXECUTE it - and the Android build needs both.
+#
+# Measured 2026-10-15, handed over raw: a JVM ProcessBuilder cannot exec ANY file under /home/user,
+# while bash runs the same file normally -
+#   java.io.IOException: Cannot run program ".../flutter/bin/flutter": error=13, Permission denied
+# reproduced minimally against /home/user/toolchain-probe/{cmake,probe.sh} (0755, user_home_t). Controls
+# that DO start from the same JVM: /bin/echo, /bin/bash, a script in /tmp (tmp_t), one in /dev/shm
+# (tmpfs_t) - so only user_home_t is refused, and it is the type rather than the mode.
+#
+# There is no AVC to find, which is what makes it read like a broken toolchain: the denial is dontaudited
+#   dontaudit java_domain user_home_t:file { execute execute_no_trans getattr ioctl map open read };
+# The manage interfaces above cover read, write and create but never execute, so r16's grants let the
+# Gradle/Flutter build read and write its toolchains and never run them. Same gap and same interface as
+# git's hooks, a few modules over.
+userdom_exec_user_home_content_files(java_t)
 allow java_t user_home_t:dir watch;
 # ~/tmp is the build's scratch space (create/unlink/lock/map on the tmpfs mount)
 manage_dirs_pattern(java_t, user_tmpfs_t, user_tmpfs_t)
