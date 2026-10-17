@@ -1,2 +1,7 @@
 # The owner's scratch directory, and where applications drop their own logs.
 HOME_DIR/tmp(/.*)?		gen_context(system_u:object_r:user_tmp_t,s0)
+# The owner's download directory: Firefox's browser.download.dir points here (folderList 2 = last used
+# directory). Base policy already labels ~/Downloads xdg_downloads_t through the genhomedircon templates,
+# and the mozilla module already carries the full manage set for that type - so the download failed only
+# because this directory, the one actually used, carried the generic user_home_t label. No new grants.
+HOME_DIR/var/downloads(/.*)?		gen_context(system_u:object_r:xdg_downloads_t,s0)
