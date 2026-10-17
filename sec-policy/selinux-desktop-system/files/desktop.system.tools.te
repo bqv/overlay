@@ -11,6 +11,7 @@ gen_require(`
   type unconfined_t;
   type wireplumber_t;
   attribute domain;
+  attribute init_script_file_type;
   class cap_userns sys_ptrace;
   class capability { chown dac_override dac_read_search net_admin sys_admin sys_ptrace sys_tty_config };
   class netlink_kobject_uevent_socket { getattr sendto };
@@ -64,6 +65,18 @@ allow ss_t self:netlink_route_socket { bind create getopt nlmsg_read read setopt
 # run_init starts an init script in its proper domain and chowns the state it hands
 # over; the capability class has no interface for this.
 allow run_init_t self:capability chown;
+
+# run_init can exec the GENERIC init script type but none of the per-service ones: refpolicy gives
+# run_init_t only { getattr ioctl lock open read } on the init_script_file_type attribute, and the exec
+# pair on initrc_exec_t alone. PostgreSQL's script is postgresql_initrc_exec_t, so
+#   sudo run_init rc-service postgresql-18 start
+# died with `rc-service: Failed executing '/etc/init.d/postgresql-18': Permission denied` - while the
+# boot path is fine, because init runs in initrc_t and refpolicy has
+# type_transition initrc_t postgresql_initrc_exec_t:process initrc_t for it. run_init_t is the
+# authenticated init domain; letting it exec an init script is exactly its purpose, and it already holds
+# this pair on initrc_exec_t, so this is the same grant on the attribute that covers every service whose
+# script carries its own type rather than postgres alone.
+allow run_init_t init_script_file_type:file { entrypoint execute map };
 
 # ss -a asks the kernel to autoload the MPTCP diag module (net-pf-16-proto-4-type-44)
 # to enumerate mptcp sockets; the autoload is refused and it carries on - the census
