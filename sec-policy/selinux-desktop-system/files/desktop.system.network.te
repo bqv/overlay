@@ -4,6 +4,8 @@ gen_require(`
 	attribute client_packet_type;
 	attribute packet_type;
 	type staff_t;
+	type postgresql_t;
+	type postgresql_port_t;
 	type sysadm_t;
 	type stremio_server_t;
 	type mozilla_t;
@@ -190,6 +192,25 @@ allow staff_t dynamic_packet_t:packet { send recv };
 # be dropped. Losing the lease is the one flow failure that would cut this box off
 # the network, so it keeps a net until that observation exists.
 allow dhcpc_t dynamic_packet_t:packet { send recv };
+
+# PostgreSQL over the WireGuard tunnel: 5432 is in neither secmark map, so the packet carries the
+# catch-all in both directions. Measured on delta 2026-10-18, permissive=0, once a second until the
+# client gave up, with the service listening on 10.0.0.2:5432 throughout (ss: 127.0.0.1:5432,
+# 10.0.0.2:5432, [::1]:5432):
+#   avc: denied { recv } for comm="napi/wg0-0" saddr=10.0.0.1 src=47026 daddr=10.0.0.2 dest=5432
+#        netif=wg0 scontext=system_u:system_r:postgresql_t tcontext=dynamic_packet_t tclass=packet
+# A client on the far side got a reset before a single protocol byte. The daemon's own
+# name_bind/name_connect on postgresql_port_t was already granted - the packet label was the whole of
+# it, and the encapsulated outer packet falls to the catch-all too, so mapping 5432 to a secmark of
+# its own (a new packet type) would not remove this line. Same shape as the sshd-over-tunnel case.
+allow postgresql_t dynamic_packet_t:packet { send recv };
+
+# ssh -R/-L onto the local PostgreSQL: the ssh client reaches port_type only through the
+# ssh_connect_any_port boolean, which is off as refpolicy ships it - the same conditional-rule trap
+# allow_user_postgresql_connect set earlier the same night. Narrow grant instead of the boolean:
+#   avc: denied { name_connect } for comm="ssh" dest=5432 scontext=staff_u:staff_r:ssh_t
+#        tcontext=system_u:object_r:postgresql_port_t tclass=tcp_socket
+allow ssh_t postgresql_port_t:tcp_socket name_connect;
 
 # dhcpcd holds promiscuous AF_PACKET sockets - three of them, and one is bound to eno1
 # (ss -0apne: fd=21, ino 8006) - so the kernel checks `packet recv` for dhcpc_t against
