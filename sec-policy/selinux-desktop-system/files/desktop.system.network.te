@@ -228,11 +228,13 @@ allow postgresql_t local_packet_t:packet { send recv };
 # packet, so this is the outer packet of a TCP flow carrying the ICMP label:
 #   avc: denied { send } for comm="kworker/1:0" saddr=192.168.1.110 src=33858 daddr=31.58.214.93
 #        dest=51820 netif=eno1 scontext=system_u:system_r:postgresql_t tcontext=icmp_packet_t
-# The label is what should still be understood, not normalised: the ruleset writes an skb's secmark back
-# onto the conntrack for established/original traffic (ruleset.nftables:186,229) and labels ICMP from the
-# protocol alone in every state (145-146,196-197), which is a path by which a related ICMP's label can
-# reach the parent flow. Granted here to unblock the transfer, and left recorded so the labelling can be
-# chased; postgres cannot generate ICMP itself, so the scope is only packets the kernel already labelled.
+# What the label is NOT, checked rather than assumed: it is not the flow's own. The conntrack entry for
+# the same connection reads dynamic_packet_t in /proc/net/nf_conntrack, so an earlier guess here - that a
+# related ICMP's label had been written back onto the parent flow (ruleset.nftables:186,229) - was wrong
+# and is retracted. What is left is that the label sits on an individual skb: the encapsulated form of an
+# ICMP packet, attributed to whichever domain last held the shared WireGuard socket. It was not what was
+# resetting the connections either; the block was a pg_hba entry. postgres cannot generate ICMP itself, so
+# the scope of this grant is only packets the kernel already labelled.
 allow postgresql_t icmp_packet_t:packet { send recv };
 
 # dhcpcd holds promiscuous AF_PACKET sockets - three of them, and one is bound to eno1
