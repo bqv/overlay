@@ -212,6 +212,29 @@ allow postgresql_t dynamic_packet_t:packet { send recv };
 #        tcontext=system_u:object_r:postgresql_port_t tclass=tcp_socket
 allow ssh_t postgresql_port_t:tcp_socket name_connect;
 
+# r69: the loopback leg of a reverse ssh forward. `ssh -R 127.0.0.1:55432:127.0.0.1:5432 zeta` makes the
+# ssh client itself open a loopback connection to the local database, and the ruleset labels loopback
+# traffic that no port map classifies `local`. Both ends needed it and neither had it - this is the gap
+# recorded but not fixed when the sshd-over-tunnel round met the same shape:
+#   avc: denied { send } for comm="ssh" saddr=127.0.0.1 src=55176 daddr=127.0.0.1 dest=5432 netif=lo
+#        scontext=staff_u:staff_r:ssh_t tcontext=local_packet_t tclass=packet
+#   avc: denied { recv } for comm=... scontext=system_u:system_r:postgresql_t tcontext=local_packet_t
+allow ssh_t local_packet_t:packet { send recv };
+allow postgresql_t local_packet_t:packet { send recv };
+
+# r69 too: the DIRECT path. postgres's tunnelled packets can arrive labelled icmp_server - a label that
+# cannot describe a TCP flow - and 14 were dropped in 35 s (retransmission cadence) while a bulk COPY
+# stalled with the client's send buffer full and no ACKs. The AVC tuple is the ENCAPSULATED WireGuard
+# packet, so this is the outer packet of a TCP flow carrying the ICMP label:
+#   avc: denied { send } for comm="kworker/1:0" saddr=192.168.1.110 src=33858 daddr=31.58.214.93
+#        dest=51820 netif=eno1 scontext=system_u:system_r:postgresql_t tcontext=icmp_packet_t
+# The label is what should still be understood, not normalised: the ruleset writes an skb's secmark back
+# onto the conntrack for established/original traffic (ruleset.nftables:186,229) and labels ICMP from the
+# protocol alone in every state (145-146,196-197), which is a path by which a related ICMP's label can
+# reach the parent flow. Granted here to unblock the transfer, and left recorded so the labelling can be
+# chased; postgres cannot generate ICMP itself, so the scope is only packets the kernel already labelled.
+allow postgresql_t icmp_packet_t:packet { send recv };
+
 # dhcpcd holds promiscuous AF_PACKET sockets - three of them, and one is bound to eno1
 # (ss -0apne: fd=21, ino 8006) - so the kernel checks `packet recv` for dhcpc_t against
 # the secmark of every inbound packet on both interfaces. The client-flow labels are this
