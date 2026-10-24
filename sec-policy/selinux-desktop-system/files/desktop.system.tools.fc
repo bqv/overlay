@@ -13,3 +13,8 @@
 # every domain that may execute ordinary binaries see it as executable: staff_t,
 # sysadm_t, and the portage domains that an ebuild shelling out to zig would use.
 /opt/zig-bin-[^/]*/zig	--	gen_context(system_u:object_r:bin_t,s0)
+# The AMD KFD (compute) node. Base policy has no rule for it, so it keeps device_t - a type granted to
+# almost nobody on purpose - and every open fails EACCES with nothing in the audit (device_t accesses are
+# dontaudited). The render nodes beside it get dri_device_t from /dev/dri/.+, which is why Vulkan works
+# and ROCm cannot see the card. Measured 2026-10-24.
+/dev/kfd	-c	gen_context(system_u:object_r:kfd_device_t,s0)

@@ -10,8 +10,11 @@ gen_require(`
   type ss_t;
   type unconfined_t;
   type wireplumber_t;
+  type staff_t;
+  type sysadm_t;
   attribute domain;
   attribute init_script_file_type;
+  attribute device_node;
   class cap_userns sys_ptrace;
   class capability { chown dac_override dac_read_search net_admin sys_admin sys_ptrace sys_tty_config };
   class netlink_kobject_uevent_socket { getattr sendto };
@@ -77,6 +80,21 @@ allow run_init_t self:capability chown;
 # this pair on initrc_exec_t, so this is the same grant on the attribute that covers every service whose
 # script carries its own type rather than postgres alone.
 allow run_init_t init_script_file_type:file { entrypoint execute map };
+
+# r71: /dev/kfd is the AMD KFD compute node, and base policy carries no rule for it at all - it keeps
+# device_t, a type granted to almost nobody on purpose. ROCm therefore finds zero devices while Vulkan on
+# the neighbouring render node works, and nothing reaches the audit because device_t access is dontaudited
+# (`dontaudit staff_t device_t:chr_file getattr` is in base, and the open is silenced the same way):
+#   head -c 1 /dev/kfd  -> Permission denied       (uid 1000 AND root)
+#   /dev/dri/renderD129 -> dri_device_t            (same card, works)
+# Give it its own type and the same treatment the working render node has, for the session and for root:
+# read/write/ioctl plus map, which is what ROCm needs to mmap queues out of the node.
+type kfd_device_t;
+typeattribute kfd_device_t device_node;
+allow staff_t kfd_device_t:chr_file { append getattr ioctl lock open read write };
+allow staff_t kfd_device_t:chr_file map;
+allow sysadm_t kfd_device_t:chr_file { append getattr ioctl lock open read write };
+allow sysadm_t kfd_device_t:chr_file map;
 
 # ss -a asks the kernel to autoload the MPTCP diag module (net-pf-16-proto-4-type-44)
 # to enumerate mptcp sockets; the autoload is refused and it carries on - the census
