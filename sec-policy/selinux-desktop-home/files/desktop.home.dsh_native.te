@@ -1,6 +1,10 @@
 policy_module(desktop.home.dsh_native, 1.0)
 
 gen_require(`
+	type xdg_config_t;
+`)
+
+gen_require(`
 	attribute user_home_content_type;
 	role staff_r;
 	type staff_t;
@@ -153,3 +157,15 @@ ps_process_pattern(dsh_native_t, staff_t)
 # parts of what staff_t holds on user_home_t that mean anything for this file.
 manage_files_pattern(staff_t, dsh_credentials_t, dsh_credentials_t)
 allow staff_t dsh_credentials_t:file { map watch };
+
+# --- r73: two more, both from the first offscreen run of the PACKAGED client (2026-10-25) ---
+#
+# (1) Its launcher could not stop it. `timeout` (staff_t) sent SIGTERM four times and every one was denied:
+#     { signal } for comm="timeout" tcontext=dsh_native_t tclass=process
+# so only a SIGKILL from outside ended it. Whatever starts a GUI application must be able to stop it.
+allow staff_t dsh_native_t:process { getattr sigchld sigkill signal signull };
+#
+# (2) It cannot save its own settings: writing ~/.config/dsh-native.conf (xdg_config_t) is denied, twice in
+# the run. xdg_manage_data covers its data directory, not its config file, and the read-only config
+# interfaces only grant read.
+allow dsh_native_t xdg_config_t:file { getattr open read write };
