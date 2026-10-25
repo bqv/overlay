@@ -215,3 +215,14 @@ allow dsh_native_t self:process { getcap setsched };
 # /proc/sys/dev: it probes the DRM device sysctls at startup (16 denials). sysctl_vm_overcommit_t (6 reads) is
 # left alone for now - nothing fails without it.
 kernel_read_device_sysctls(dsh_native_t)
+
+# --- r77: Qt commits an atomic save with link(2), not rename(2) ---
+#
+# r76's create/rename/setattr/unlink let QSettings get as far as writing its temp file and then it failed on
+# the COMMIT, so every write was still dropped and nothing persisted:
+#   syscall=linkat success=no exit=EACCES
+#   { link } for comm="dsh-native" name=#25600579 tcontext=xdg_config_t tclass=file
+# QSaveFile links the temp file onto the target and then unlinks the temp; rename is the other, older strategy.
+# The session proved it in the real domain (offscreen, real ~/.config) and confirmed link is the only remaining
+# denial on xdg_config_t in the whole run.
+allow dsh_native_t xdg_config_t:file { link };
