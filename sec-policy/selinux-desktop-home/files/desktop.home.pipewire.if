@@ -14,15 +14,10 @@
 ## pipewire_domtrans is provided by the base policy (apps/pipewire.if).
 ## Do not redefine it here: m4 fails the home package build with
 ## "duplicate definition of pipewire_domtrans()".
-interface(`wireplumber_domtrans',`
-	gen_require(`
-		type wireplumber_t, wireplumber_exec_t;
-	')
-
-	corecmd_search_bin($1)
-	domtrans_pattern($1, wireplumber_exec_t, wireplumber_t)
-')
-
+# wireplumber_domtrans is now provided by the base policy (apps/wireplumber.if) as well, and the
+# definition here became a duplicate: the package build fails with
+#   m4: Error: duplicate definition of wireplumber_domtrans()
+# Same trap the pipewire comment above records. Use base's, do not redefine it.
 ######################################
 ## <summary>
 ##	Execute pipewire in the caller domain.
