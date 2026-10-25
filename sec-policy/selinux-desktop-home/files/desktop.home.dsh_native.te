@@ -2,7 +2,7 @@ policy_module(desktop.home.dsh_native, 1.0)
 
 gen_require(`
 	type xdg_config_t;
-`)
+')
 
 gen_require(`
 	attribute user_home_content_type;
