@@ -5,3 +5,9 @@ HOME_DIR/\.dsh/\.credentials\.yaml		gen_context(system_u:object_r:dsh_credential
 # staff_git_t, which the module's manage patterns do not name, so every qml file under the
 # repo became unreadable to it. A shared development directory belongs in user_home_t; the
 # application's normal use reads /usr/share/dsh-native/qml, which is typed above.
+# The harness entry point the client launches (/usr/bin/dsh is a symlink to it). It sits in the node
+# module tree, where everything is lib_t, so `corecmd_exec_bin(dsh_native_t)` - which the module has
+# carried since r32 - never applied: dsh_native_t was denied execute_no_trans on lib_t while the same
+# client built in the work tree worked, because a work-tree binary stays in user_home_t and therefore
+# runs as staff_t with no transition at all.
+/usr/lib/node_modules/@deepseek-ai/dsh/lib/bin\.js	--	gen_context(system_u:object_r:bin_t,s0)
