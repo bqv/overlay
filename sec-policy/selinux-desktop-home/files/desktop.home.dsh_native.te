@@ -190,3 +190,27 @@ allow dsh_native_t xdg_config_t:dir { add_name write };
 #     something specific to this application.
 dev_rw_dma_dev(dsh_native_t)
 dev_rw_dma_dev(staff_t)
+
+# --- r76: QSettings writes atomically, so the lock and the temp file need create ---
+#
+# The session's diagnosis was exact: QSettings writes "<file>.lock" plus a temp file and silently abandons the
+# write when it cannot create them, so the r73 file *write* was never reached. 227 denials of one permission,
+# every few seconds (Qt retries):
+#   { create } for comm="dsh-native" name="dsh-native.conf.lock" tcontext=xdg_config_t tclass=file
+# The atomic replace then renames over the old file and unlinks the lock, and the directory needs remove_name
+# to go with r75's add_name.
+allow dsh_native_t xdg_config_t:file { create rename setattr unlink };
+allow dsh_native_t xdg_config_t:dir { remove_name };
+#
+# The shader cache: search and getattr on the directory, and the files themselves so it can populate. Every GUI
+# renderer does this; without it the cache never fills and first paint stays slow.
+allow dsh_native_t mesa_shader_cache_t:dir { getattr search };
+allow dsh_native_t mesa_shader_cache_t:file { create getattr open read write };
+#
+# Its own process: getcap (11) and setsched (7) - Qt and render threads inspecting and prioritising themselves.
+# Self-only, so the scope is the domain's own threads.
+allow dsh_native_t self:process { getcap setsched };
+#
+# /proc/sys/dev: it probes the DRM device sysctls at startup (16 denials). sysctl_vm_overcommit_t (6 reads) is
+# left alone for now - nothing fails without it.
+kernel_read_device_sysctls(dsh_native_t)
