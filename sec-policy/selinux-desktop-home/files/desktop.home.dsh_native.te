@@ -3,6 +3,8 @@ policy_module(desktop.home.dsh_native, 1.0)
 gen_require(`
 	type xdg_config_t;
 	type mesa_shader_cache_t;
+	type user_bin_t;
+	type user_tmp_t;
 ')
 
 gen_require(`
@@ -257,3 +259,25 @@ allow dsh_native_t dsh_native_qml_t:lnk_file { getattr read };
 # through it), so the file chooser would still have shown nothing. staff_t's own home grant carries read for the
 # same reason. Verified against the loaded rule rather than assumed from the interface name.
 allow dsh_native_t { user_home_dir_t user_home_t }:dir read;
+
+# --- r80: the home tree is not one type, and inotify needs watch ---
+#
+# The owner: "there are still some lingering selinux grants missing evidently though - i couldn't enter bin/ or
+# tmp/". The r78/r79 read grant covers user_home_t and user_home_dir_t only; this tree types parts of the home
+# directory separately, so a chooser stops dead at two of the owner's most-used folders:
+#   /home/user/bin -> user_bin_t     (also ~/.local/share/pnpm)
+#   /home/user/tmp -> user_tmp_t     (the scoped scratch dir)
+# and the same run shows the client's inotify failing on /home/user/{bin,tmp,var,etc}:
+#   inotify_add_watch(/home/user/bin) failed: (Permission denied)
+# inotify_add_watch is the dir `watch` permission, which none of the home grants carry - staff_t holds it on all
+# of these types (with watch_reads/watch_sb), which is why a shell has no trouble.
+allow dsh_native_t { user_home_dir_t user_home_t user_bin_t user_tmp_t }:dir watch;
+
+# Read and list ~/bin. Its files are the user's scripts and the pnpm store, so read-only: nothing here executes
+# or writes them.
+allow dsh_native_t user_bin_t:dir { getattr open read search };
+allow dsh_native_t user_bin_t:file { getattr open read map };
+
+# ~/tmp: the file perms have been here since r30 (the client's own scratch), the DIRECTORY was never granted,
+# so it could write into it by path but not list it.
+allow dsh_native_t user_tmp_t:dir { getattr open read search };
