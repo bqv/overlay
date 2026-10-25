@@ -5,6 +5,15 @@ gen_require(`
 	type mesa_shader_cache_t;
 	type user_bin_t;
 	type user_tmp_t;
+	type xdg_downloads_t;
+	type git_home_t;
+	type git_user_content_t;
+	type xdg_documents_t;
+	type xdg_pictures_t;
+	type xdg_videos_t;
+	type xdg_music_t;
+	type xdg_data_t;
+	type xdg_cache_t;
 ')
 
 gen_require(`
