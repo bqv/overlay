@@ -249,3 +249,11 @@ allow dsh_native_t mesa_shader_cache_t:file { map };
 # Its own QML tree: a symlink inside /usr/share/dsh-native/qml/text was denied read, which the file/dir grants in
 # the module never covered.
 allow dsh_native_t dsh_native_qml_t:lnk_file { getattr read };
+
+# --- r79: read_dir_perms is not enough to LIST a directory ---
+#
+# r78's userdom_read_user_home_content_files gives { getattr open search } on the home directories. Listing them
+# needs read as well (a directory listing is read(2) on the directory; search is only the permission to walk
+# through it), so the file chooser would still have shown nothing. staff_t's own home grant carries read for the
+# same reason. Verified against the loaded rule rather than assumed from the interface name.
+allow dsh_native_t { user_home_dir_t user_home_t }:dir read;
