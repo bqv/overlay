@@ -281,3 +281,21 @@ allow dsh_native_t user_bin_t:file { getattr open read map };
 # ~/tmp: the file perms have been here since r30 (the client's own scratch), the DIRECTORY was never granted,
 # so it could write into it by path but not list it.
 allow dsh_native_t user_tmp_t:dir { getattr open read search };
+
+# --- r81: the rest of the browsable home tree, not one type per round ---
+#
+# The owner predicted this round themselves: "the one you predicted: ~/var/downloads still does not open".
+#   /home/user/var/downloads -> xdg_downloads_t   { getattr } denied for the chooser
+# Rather than ship one type per week, the whole browsable part of the home tree is granted in one go - READ and
+# WATCH only. The list is deliberate about what it leaves out:
+#
+#   granted: user_home_t, user_home_dir_t, user_bin_t, user_tmp_t (r78-r80),
+#            xdg_downloads_t, git_home_t, git_user_content_t,
+#            xdg_documents_t, xdg_pictures_t, xdg_videos_t, xdg_music_t, xdg_data_t, xdg_cache_t
+#   NOT granted, on purpose: ssh_home_t, gpg_secret_t, gpg_agent_tmp_t, gnome_keyring_home_t, krb5_home_t,
+#            xauth_home_t, iceauth_home_t, mail_home_t, mozilla_home_t, mozilla_plugin_home_t, dsh_credentials_t
+#            (beyond its existing read), user_cert_t, screen_home_t - session credentials, keys and other
+#            applications' private state are not "files the user browses". The module's own note has said since
+#            r30 that a home read must not include the SSH keys.
+allow dsh_native_t { xdg_downloads_t git_home_t git_user_content_t xdg_documents_t xdg_pictures_t xdg_videos_t xdg_music_t xdg_data_t xdg_cache_t }:dir { getattr open read search watch };
+allow dsh_native_t { xdg_downloads_t git_home_t git_user_content_t xdg_documents_t xdg_pictures_t xdg_videos_t xdg_music_t xdg_data_t xdg_cache_t }:file { getattr open read map };
