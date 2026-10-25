@@ -169,3 +169,24 @@ allow staff_t dsh_native_t:process { getattr sigchld sigkill signal signull };
 # the run. xdg_manage_data covers its data directory, not its config file, and the read-only config
 # interfaces only grant read.
 allow dsh_native_t xdg_config_t:file { getattr open read write };
+
+# --- r75: the in-app restart, settings persistence, and the udmabuf node ---
+#
+# (1) "Restart client" is QProcess::startDetached() of /usr/bin/dsh-native FROM INSIDE dsh_native_t - the
+#     client replaces itself, so it must be allowed to exec its own entry point without a transition (the new
+#     instance is the same application and stays in this domain):
+#       avc: denied { execute_no_trans } for comm="dsh-native" path="/usr/bin/dsh-native"
+#            tcontext=dsh_native_exec_t tclass=file
+#     application_domain() gave it entrypoint/execute for the LAUNCHER path but not this one.
+allow dsh_native_t dsh_native_exec_t:file { execute execute_no_trans };
+#
+# (2) Settings persistence - window geometry, composer preference: QSettings creates or locks a file INSIDE
+#     ~/.config/dsh, so the directory needs the create-entry permissions, not just the file write granted in r73:
+#       avc: denied { write } for comm="dsh-native" name="dsh" tcontext=xdg_config_t tclass=dir
+allow dsh_native_t xdg_config_t:dir { add_name write };
+#
+# (3) /dev/udmabuf (dma_device_t) - read and write. Seen from the DEV build of the same client running as
+#     staff_t, so both domains get it: it is a generic DRM/dma-buf helper any GUI renderer may touch, not
+#     something specific to this application.
+dev_rw_dma_dev(dsh_native_t)
+dev_rw_dma_dev(staff_t)
