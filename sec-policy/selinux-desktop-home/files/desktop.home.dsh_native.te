@@ -226,3 +226,26 @@ kernel_read_device_sysctls(dsh_native_t)
 # The session proved it in the real domain (offscreen, real ~/.config) and confirmed link is the only remaining
 # denial on xdg_config_t in the whole run.
 allow dsh_native_t xdg_config_t:file { link };
+
+# --- r78: the owner's instruction - the file chooser lists nothing and nothing can be attached ---
+#
+# "dsh_native_t needs far broader file access perms, because i can't attach a thing currently, the file chooser
+# opens and shows nothing, and probably couldn't attach it if it could." (owner, 2026-10-25)
+#
+# Measured: the module had only `user_home_t:dir search` - traversal - so a chooser could walk to a path but
+# never LIST a directory, and there was no file rule for user_home_t at all:
+#   { getattr } for path="/home/user/.dsh/attachments/md-images-check.png" tcontext=user_home_t tclass=file
+# An image referenced by absolute path falls back to caption text for the same reason.
+#
+# userdom_read_user_home_content_files gives read_dir_perms on user_home_dir_t and user_home_t (getattr, open,
+# read, SEARCH - which is what listing a directory needs) and read_file_perms on the files, plus the symlink
+# reads. map is separate: rendering an image mmaps it, and the interface does not carry map.
+userdom_read_user_home_content_files(dsh_native_t)
+allow dsh_native_t user_home_t:file { map };
+#
+# The shader cache was granted in r76 without map, so the index itself could not be mapped (one denial here).
+allow dsh_native_t mesa_shader_cache_t:file { map };
+#
+# Its own QML tree: a symlink inside /usr/share/dsh-native/qml/text was denied read, which the file/dir grants in
+# the module never covered.
+allow dsh_native_t dsh_native_qml_t:lnk_file { getattr read };
