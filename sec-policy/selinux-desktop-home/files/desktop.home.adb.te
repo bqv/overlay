@@ -1,6 +1,8 @@
 policy_module(desktop.home.adb, 1.0)
 
 gen_require(`
+  type http_client_packet_t;
+  type http_server_packet_t;
 	type android_tools_t;
 	type staff_t;
 	type staff_screen_t;
@@ -351,3 +353,16 @@ allow sysadm_t android_tools_t:process { getattr sigchld sigkill signal signull 
 # The file set was already granted by the r35b window; without the directory search the open() fails
 # before that check is ever reached. search is the whole need - a named path needs no listing.
 allow android_tools_t user_tmp_t:dir search;
+
+# --- r84: adb reverse to 8080 - the same http_client label as r83 ---
+#
+# The host side of `adb reverse tcp:8080 tcp:8080` is the adb process dialling 127.0.0.1:8080 itself, and 8080 is
+# mapped in the ruleset's secmapping_out as "http_client" - so even that loopback flow carries
+# http_client_packet_t, not local_packet_t. android_tools_t held local_packet_t and dynamic_packet_t (which is
+# why the 8081 control worked: unmapped port) but not the http labels, so every host-side connect was dropped
+# and the device saw an empty reply:
+#   { send } for comm="adb" saddr=127.0.0.1 src=50623 daddr=127.0.0.1 dest=8080 netif=lo
+#        scontext=android_tools_t tcontext=http_client_packet_t tclass=packet
+# 42 records, every one dest=8080, none for 8081.
+allow android_tools_t http_client_packet_t:packet { send recv };
+allow android_tools_t http_server_packet_t:packet { send recv };
