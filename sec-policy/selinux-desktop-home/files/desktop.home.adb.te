@@ -366,3 +366,16 @@ allow android_tools_t user_tmp_t:dir search;
 # 42 records, every one dest=8080, none for 8081.
 allow android_tools_t http_client_packet_t:packet { send recv };
 allow android_tools_t http_server_packet_t:packet { send recv };
+
+# --- r85: the unprivileged adb/fastboot exec transition was being denied ---
+#
+# The bounded-transition record that looked unrelated is in fact every plain `adb` invocation:
+#   proctitle=adb -s 192.168.1.100:42135 reverse --list
+#   PATH item=0 name="/usr/bin/adb" obj=android_tools_exec_t
+#   op=security_bounded_transition seresult=denied staff_t -> android_tools_t
+#   { nnp_transition nosuid_transition } for comm="bash" scontext=staff_t tcontext=android_tools_t
+# r56 granted `staff_t android_tools_t:process transition`, which covers a plain exec, but not the process2
+# flags - so the exec of android_tools_exec_t was refused and adb kept running as staff_t (which is why the
+# wireless path worked: it needs no usb_device_t write). The SELINUX_ERR line is a follow-on from the refused
+# exec, not a separate bounds problem: staff_t is not bounded by anything here.
+allow staff_t android_tools_t:process2 { nnp_transition nosuid_transition };
