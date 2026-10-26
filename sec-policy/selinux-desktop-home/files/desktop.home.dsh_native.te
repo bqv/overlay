@@ -2,6 +2,10 @@ policy_module(desktop.home.dsh_native, 1.0)
 
 gen_require(`
 	type xdg_config_t;
+	type http_cache_port_t;
+	type tmp_t;
+	type cgroup_t;
+	type shell_exec_t;
 	type mesa_shader_cache_t;
 	type user_bin_t;
 	type user_tmp_t;
@@ -308,3 +312,29 @@ allow dsh_native_t user_tmp_t:dir { getattr open read search };
 #            r30 that a home read must not include the SSH keys.
 allow dsh_native_t { xdg_downloads_t git_home_t git_user_content_t xdg_documents_t xdg_pictures_t xdg_videos_t xdg_music_t xdg_data_t xdg_cache_t }:dir { getattr open read search watch };
 allow dsh_native_t { xdg_downloads_t git_home_t git_user_content_t xdg_documents_t xdg_pictures_t xdg_videos_t xdg_music_t xdg_data_t xdg_cache_t }:file { getattr open read map };
+
+# --- r82: the Servo crash, the web origin, and the rest of the measured set ---
+#
+# THE CRASH: a Servo web view's SpiderMonkey JIT allocates anonymous executable memory, and dsh_native_t had no
+# execmem, so the allocation failed and JavaScript segfaulted inside js::BaseScript::New a second or two after
+# the view opened. 18 denials across the crashed runs:
+#   { execmem } for comm="Script#1" scontext=dsh_native_t tcontext=dsh_native_t tclass=process
+# Scoped to this domain, not the global allow_execmem boolean - the tree's java_t note makes the same argument
+# for JIT memory. (Qt's QML JIT is separate and already handled by dsh_native_tmpfs_t.)
+allow dsh_native_t self:process execmem;
+#
+# THE WEB ORIGIN: the client connects to http://127.0.0.1:8080/, which the policy labels http_cache_port_t, so
+# "nothing at the web origin" was this and not a missing server:
+#   { name_connect } for comm="dsh-native" dest=8080 tcontext=http_cache_port_t tclass=tcp_socket
+allow dsh_native_t http_cache_port_t:tcp_socket name_connect;
+#
+# The rest of the same window, every one measured:
+allow dsh_native_t user_tmp_t:file { watch };           # 120: watch on FILES - r80 granted dirs only
+allow dsh_native_t user_tmp_t:dir { write };            # 2: creating files there, not just writing them
+allow dsh_native_t tmp_t:dir { write };                 # 1: /tmp
+allow dsh_native_t mesa_shader_cache_t:dir { write };   # 12: r76 granted the files, not the directory
+allow dsh_native_t user_bin_t:lnk_file { read };        # 19: the PATH symlink, same class as java_t's
+allow dsh_native_t shell_exec_t:file { getattr };       # 6: it probes /bin/sh - getattr only
+allow dsh_native_t cgroup_t:dir { search };             # 58: probing /sys/fs/cgroup
+kernel_read_kernel_sysctls(dsh_native_t)                # 4: /proc/sys/kernel
+kernel_read_vm_overcommit_sysctl(dsh_native_t)          # 1: the read left out in r76, which kept asking
