@@ -2,6 +2,9 @@ policy_module(desktop.home.dsh_native, 1.0)
 
 gen_require(`
 	type xdg_config_t;
+	type http_client_packet_t;
+	type http_server_packet_t;
+	type dynamic_packet_t;
 	type http_cache_port_t;
 	type tmp_t;
 	type cgroup_t;
@@ -338,3 +341,18 @@ allow dsh_native_t shell_exec_t:file { getattr };       # 6: it probes /bin/sh -
 allow dsh_native_t cgroup_t:dir { search };             # 58: probing /sys/fs/cgroup
 kernel_read_kernel_sysctls(dsh_native_t)                # 4: /proc/sys/kernel
 kernel_read_vm_overcommit_sysctl(dsh_native_t)          # 1: the read left out in r76, which kept asking
+
+# --- r83: the web view cannot reach 8080, and the secmark label is why ---
+#
+# The owner suspected nftables/secmark and was right about the second half. Measured on this box while a curl
+# from a staff_t shell to the SAME URL returned 303 (loopback) and 401 (LAN door):
+#   /proc/net/nf_conntrack, 127.0.0.1 -> 127.0.0.1:8080   secctx=http_client_packet_t
+#   /proc/net/nf_conntrack, 192.168.1.x -> ...:8080        secctx=dynamic_packet_t
+# 8080 is in the ruleset's secmapping_out as "http_client", so even a LOOPBACK flow to it carries
+# http_client_packet_t - not local_packet_t. dsh_native_t held local_packet_t only, so its SYN to the gate was
+# dropped before the gate ever saw it. That is why 8081 (the carrier, an unmapped port) worked and 8080 did not.
+allow dsh_native_t http_client_packet_t:packet { send recv };
+# The gate's replies come back on the same flow, so the client needs the same label to receive them; and any
+# tunnel/LAN path to the door lands on the catch-all, which this domain never had either.
+allow dsh_native_t http_server_packet_t:packet { send recv };
+allow dsh_native_t dynamic_packet_t:packet { send recv };
