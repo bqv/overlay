@@ -429,3 +429,15 @@ allow staff_t dsh_profile_t:file { watch };
 allow staff_t dsh_profile_t:dir { watch };
 allow dsh_native_t dsh_profile_t:file { watch };
 allow dsh_native_t dsh_profile_t:dir { watch };
+
+# --- r91: the session save commits with link(2), and the client reads its own cgroup ---
+#
+# With the session tree typed (r90) the headless child can write, and then its atomic save is refused:
+#   { link } for name="session.v4.jsonl.zstd.3c9022e01e5f.tmp" tcontext=dsh_profile_t tclass=file
+# Same link(2) commit as the Qt settings (r73/r77) and the same gap in the type's file perms: create/write/
+# rename/unlink were there, link was not. The temp file is hard-linked over the real record.
+allow dsh_native_t dsh_profile_t:file { link };
+#
+# Cosmetic but constant: the client's own memory probe reads its cgroup (supervisor limit reporting). Not a
+# failure, but it is 16 denials a window and there is no reason to leave it asking.
+allow dsh_native_t cgroup_t:file { read };
