@@ -393,3 +393,13 @@ manage_files_pattern(staff_t, dsh_profile_t, dsh_profile_t)
 # staff_t already has it - not the system tmp_t. Executing out of a user-writable directory is still a relaxation
 # worth knowing about.
 allow dsh_native_t user_tmp_t:file { execute setattr };
+
+# --- r88: the ACP child spills a temp file into /tmp ---
+#
+# With r86/r87 in place the child gets past host preparation and stays up; the only denial left in the run is
+# its spill file:
+#   { add_name } for name="dsh-spill-w5JfK7" tcontext=system_u:object_r:tmp_t tclass=dir
+# r82 granted dir write on tmp_t but not add_name, and never granted the file perms, so the spill could not be
+# created. It is a scratch file the harness writes and deletes; nothing here executes from tmp_t.
+allow dsh_native_t tmp_t:dir { add_name remove_name };
+allow dsh_native_t tmp_t:file { create getattr open read unlink write };
