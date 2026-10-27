@@ -452,3 +452,24 @@ allow dsh_native_t cgroup_t:file { read };
 # the fourth permission of the same shape: create, then link, now append - a hand-written list keeps missing the
 # one permission the code's own open flags imply.
 allow dsh_native_t dsh_profile_t:file { append };
+
+# --- r93: the public https port, and the ONE directory permission the child needs ---
+#
+# (a) THE MODEL CALL. The ACP child's DeepSeek request died with "DeepSeek Messages transport failed":
+#       { name_connect } for dest=443 tcontext=http_port_t tclass=tcp_socket
+#     443 is http_port_t, not the http_cache_port_t granted in r82 for the 8080 web origin. The public https port
+#     had never been needed from this domain, and without it the agent loop plugin never registers - which is why
+#     the headless pane says "no agent factory registered" instead of showing a transport error.
+allow dsh_native_t http_port_t:tcp_socket name_connect;
+#
+# (b) THE PARENT DIRECTORY. The headless child is still refused on ~/.dsh ITSELF, the one directory this module
+#     has deliberately left untyped since r30:
+#       { write } for name="sessions" tcontext=user_home_t tclass=dir
+#     THE OWNER'S WARNING, and it is right: a great deal of tooling uses ~/.dsh (AGENTS.md, cache, plugin-data,
+#     auth, storages, remote, mobile-access, the other profiles), spread across many domains, so retyping the
+#     whole tree would put every one of those consumers behind a new type. NOT doing that.
+#     Instead: `write` on a DIRECTORY is one of the weakest permissions there is - it cannot create, delete or
+#     rename an entry (those are add_name, remove_name, rmdir), and it does not allow reading anything. It is what
+#     an open(dir, O_WRONLY) needs, which is what node does on the parent here. Granting it on user_home_t:dir
+#     gives the client no ability to change the shape of the home tree.
+allow dsh_native_t user_home_t:dir { write };
