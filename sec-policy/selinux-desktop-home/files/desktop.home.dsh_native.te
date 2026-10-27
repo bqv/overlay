@@ -74,6 +74,12 @@ files_type(dsh_native_qml_t)
 # a user_home_t read would include the SSH keys).
 type dsh_credentials_t;
 files_type(dsh_credentials_t)
+
+# The profile tree the harness composes for itself. Same reasoning as dsh_credentials_t: the directory ~/.dsh
+# stays user_home_t, only the parts a child of this application has to write get types of their own.
+type dsh_profile_t;
+files_type(dsh_profile_t)
+typeattribute dsh_profile_t user_home_content_type;
 typeattribute dsh_credentials_t user_home_content_type;
 # user_home_content_type is the attribute user_home_t carries and the userdomain rules
 # key on, so keeping it means retyping the work-tree QML does not cost the session its own
@@ -356,3 +362,19 @@ allow dsh_native_t http_client_packet_t:packet { send recv };
 # tunnel/LAN path to the door lands on the catch-all, which this domain never had either.
 allow dsh_native_t http_server_packet_t:packet { send recv };
 allow dsh_native_t dynamic_packet_t:packet { send recv };
+
+# --- r86: the ACP fallback child composes its profile and could not write it ---
+#
+# dsh-native spawns `/usr/bin/dsh --profile acp` as its fallback transport; the child inherits dsh_native_t and
+# writes ~/.dsh/profiles/acp/cordis.yml, which was user_home_t - so it exited 1 before speaking:
+#   Error: EACCES: permission denied, open '/home/user/.dsh/profiles/acp/cordis.yml'
+#   { write } for name="cordis.yml" tcontext=user_home_t tclass=file
+#   { write } for name="acp"       tcontext=user_home_t tclass=dir
+# The profile tree now has dsh_profile_t (see the .fc). The child needs the full compose-and-replace cycle,
+# not just a write: it creates cordis.yml if absent and replaces it when re-composing.
+allow dsh_native_t dsh_profile_t:dir { add_name create getattr open read remove_name rename search setattr unlink write };
+allow dsh_native_t dsh_profile_t:file { create getattr ioctl lock map open read rename setattr unlink write };
+# The harness itself (staff_t) composes profiles too, and this session runs on it - keep its access explicit
+# rather than relying on attributes.
+manage_dirs_pattern(staff_t, dsh_profile_t, dsh_profile_t)
+manage_files_pattern(staff_t, dsh_profile_t, dsh_profile_t)

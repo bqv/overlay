@@ -1,6 +1,13 @@
 /usr/bin/dsh-native		--	gen_context(system_u:object_r:dsh_native_exec_t,s0)
 /usr/share/dsh-native(/.*)?		gen_context(system_u:object_r:dsh_native_qml_t,s0)
 HOME_DIR/\.dsh/\.credentials\.yaml		gen_context(system_u:object_r:dsh_credentials_t,s0)
+
+# The client's ACP fallback spawns `/usr/bin/dsh --profile acp`, which COMPOSES its profile - it writes
+# cordis.yml into ~/.dsh/profiles/<name> and replaces it. That subtree is harness state and was user_home_t, so
+# the child (inheriting dsh_native_t) was denied write and exited 1 before speaking. Retyped as its own tree:
+# the DIRECTORY ~/.dsh stays user_home_t as this module has insisted since r30, and staff_t keeps manage over
+# the profile tree so the running harness is unaffected. Measured 2026-10-27.
+HOME_DIR/\.dsh/profiles(/.*)?		gen_context(system_u:object_r:dsh_profile_t,s0)
 # The dsh-linux work tree is deliberately NOT typed. It was, and it broke git: git runs in
 # staff_git_t, which the module's manage patterns do not name, so every qml file under the
 # repo became unreadable to it. A shared development directory belongs in user_home_t; the
