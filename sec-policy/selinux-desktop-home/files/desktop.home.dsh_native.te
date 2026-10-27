@@ -474,3 +474,15 @@ allow dsh_native_t http_port_t:tcp_socket name_connect;
 #     an open(dir, O_WRONLY) needs, which is what node does on the parent here. Granting it on user_home_t:dir
 #     gives the client no ability to change the shape of the home tree.
 allow dsh_native_t user_home_t:dir { write };
+
+# --- r94: a throwaway X server's socket, by LABEL rather than by widening ---
+#
+# The packaged client aborts on DISPLAY=:91 (an Xvfb the user started) with 'could not connect to display :91',
+# while it is fine on the real :0:
+#   { connectto } for path="/tmp/.X11-unix/X91"
+#        tcontext=user_tmp_t tclass=unix_stream_socket
+# The real :0 is xdm_tmp_t; a user-run Xvfb's socket takes the tmp_t -> user_tmp_t transition instead, which is
+# the only difference. The answer is NOT to let this domain connect to arbitrary user sockets in /tmp (that
+# would include anything else the owner puts there) - it is to give the throwaway display the same label as the
+# real one (see the .fc) and then hold connectto on that label.
+allow dsh_native_t xdm_tmp_t:unix_stream_socket { connectto };

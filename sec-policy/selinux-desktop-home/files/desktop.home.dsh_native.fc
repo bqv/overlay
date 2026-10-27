@@ -23,3 +23,10 @@ HOME_DIR/\.dsh/sessions(/.*)?		gen_context(system_u:object_r:dsh_profile_t,s0)
 # client built in the work tree worked, because a work-tree binary stays in user_home_t and therefore
 # runs as staff_t with no transition at all.
 /usr/lib/node_modules/@deepseek-ai/dsh/lib/bin\.js	--	gen_context(system_u:object_r:bin_t,s0)
+# A throwaway X server run by the USER gets user_tmp_t for its socket, because the tmp_t -> user_tmp_t
+# transition applies to any socket a user process creates - whereas the xdm-run :0 gets xdm_tmp_t. That is the
+# whole difference between "the packaged client works on :0" and "it aborts on :91". Give the throwaway displays
+# the same label as the real one, so the same grant covers both:
+#   Xvfb :91 ...  ;  restorecon -v /tmp/.X11-unix/X91
+# Numbered 90+ deliberately: the real :0 and the existing :77/:123 are already xdm_tmp_t and must not be touched.
+/tmp/\.X11-unix/X9[0-9]		--	gen_context(system_u:object_r:xdm_tmp_t,s0)
