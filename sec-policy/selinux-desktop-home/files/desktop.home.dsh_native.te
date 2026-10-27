@@ -378,3 +378,18 @@ allow dsh_native_t dsh_profile_t:file { create getattr ioctl lock map open read 
 # rather than relying on attributes.
 manage_dirs_pattern(staff_t, dsh_profile_t, dsh_profile_t)
 manage_files_pattern(staff_t, dsh_profile_t, dsh_profile_t)
+
+# --- r87: the ACP child needs to execute its native addon out of the node cache ---
+#
+# With r86 in place the profile compose succeeds (cordis.yml is rewritten), and the child then dies one step
+# later in host preparation:
+#   dsh: host preparation failed: No usable native binding found for node-addon-require-builtin-linux-x64-gnu
+#   { execute } for path="/tmp/node-addon-native-custom-loader-1000/native-cache/.../linux-x64-gnu-napi-v9.node"
+#        tcontext=user_tmp_t tclass=file
+# The node addon loader extracts the .node into /tmp (a user process's tmp files are user_tmp_t) and both chmods
+# and executes it. staff_t holds exactly this on user_tmp_t, which is why the harness works from a shell; the
+# client's domain had read/write there but not execute or setattr.
+# NOTE the scope: user_tmp_t is files the OWNER creates in /tmp - the same trust the user's own scripts get, and
+# staff_t already has it - not the system tmp_t. Executing out of a user-writable directory is still a relaxation
+# worth knowing about.
+allow dsh_native_t user_tmp_t:file { execute setattr };
