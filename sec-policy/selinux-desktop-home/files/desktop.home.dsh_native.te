@@ -411,3 +411,21 @@ allow dsh_native_t tmp_t:file { create getattr open read unlink write };
 # the plugin's own warning after r88:
 #   spill-local: Error: EACCES: permission denied, mkdtemp '/tmp/dsh-spill-XXXXXX'
 allow dsh_native_t tmp_t:dir create;
+
+# --- r90: the session tree is harness state too, and watch is not part of manage ---
+#
+# (a) The headless pane spawns `/usr/bin/dsh --profile headless --json`, which inherits dsh_native_t and writes
+#     its session under ~/.dsh/sessions/<cwd-slug>/ - user_home_t, so the write was refused:
+#       { write } for name="--home-user--" tcontext=user_home_t tclass=dir
+#     Same treatment as profiles: typed dsh_profile_t in the .fc, and the r86 grants already cover it.
+#
+# (b) THE REGRESSION FROM r86: the running host is staff_t, and manage_files_pattern does NOT include `watch`,
+#     so the host's own profile watcher started being denied after ~/.dsh/profiles was retyped:
+#       { watch } for pid=153748 comm="node-MainThread" path=".../profiles/web/package.json.lock"
+#            scontext=staff_t tcontext=dsh_profile_t tclass=file
+#     Its retries are the wall of noise. Granted watch to staff_t (and to the client's domain, which reads the
+#     same tree) on both files and directories.
+allow staff_t dsh_profile_t:file { watch };
+allow staff_t dsh_profile_t:dir { watch };
+allow dsh_native_t dsh_profile_t:file { watch };
+allow dsh_native_t dsh_profile_t:dir { watch };

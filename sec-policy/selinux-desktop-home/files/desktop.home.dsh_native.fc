@@ -8,6 +8,11 @@ HOME_DIR/\.dsh/\.credentials\.yaml		gen_context(system_u:object_r:dsh_credential
 # the DIRECTORY ~/.dsh stays user_home_t as this module has insisted since r30, and staff_t keeps manage over
 # the profile tree so the running harness is unaffected. Measured 2026-10-27.
 HOME_DIR/\.dsh/profiles(/.*)?		gen_context(system_u:object_r:dsh_profile_t,s0)
+
+# The harness's session records, for the same reason as profiles: a child spawned from the client runs as
+# dsh_native_t and has to WRITE its session under ~/.dsh/sessions/<cwd-slug>/ (which is also how the headless
+# pane failed). Same type, because it is the same class of thing - harness state the client's own children own.
+HOME_DIR/\.dsh/sessions(/.*)?		gen_context(system_u:object_r:dsh_profile_t,s0)
 # The dsh-linux work tree is deliberately NOT typed. It was, and it broke git: git runs in
 # staff_git_t, which the module's manage patterns do not name, so every qml file under the
 # repo became unreadable to it. A shared development directory belongs in user_home_t; the
