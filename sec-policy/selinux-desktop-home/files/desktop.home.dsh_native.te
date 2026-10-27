@@ -1,6 +1,7 @@
 policy_module(desktop.home.dsh_native, 1.0)
 
 gen_require(`
+	type http_port_t;
 	type xdg_config_t;
 	type http_client_packet_t;
 	type http_server_packet_t;
