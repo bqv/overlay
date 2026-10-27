@@ -401,5 +401,13 @@ allow dsh_native_t user_tmp_t:file { execute setattr };
 #   { add_name } for name="dsh-spill-w5JfK7" tcontext=system_u:object_r:tmp_t tclass=dir
 # r82 granted dir write on tmp_t but not add_name, and never granted the file perms, so the spill could not be
 # created. It is a scratch file the harness writes and deletes; nothing here executes from tmp_t.
-allow dsh_native_t tmp_t:dir { add_name remove_name };
+allow dsh_native_t tmp_t:dir { add_name create remove_name };
 allow dsh_native_t tmp_t:file { create getattr open read unlink write };
+
+# --- r89: mkdtemp needs create on the directory, not just add_name ---
+#
+# The spill plugin makes its scratch DIRECTORY with mkdtemp('/tmp/dsh-spill-XXXXXX'), which is mkdir(2): that
+# needs `create` on the tmp_t directory as well as add_name, and then the usual file perms inside it. Caught by
+# the plugin's own warning after r88:
+#   spill-local: Error: EACCES: permission denied, mkdtemp '/tmp/dsh-spill-XXXXXX'
+allow dsh_native_t tmp_t:dir create;
