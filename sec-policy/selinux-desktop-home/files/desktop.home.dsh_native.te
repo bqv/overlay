@@ -441,3 +441,14 @@ allow dsh_native_t dsh_profile_t:file { link };
 # Cosmetic but constant: the client's own memory probe reads its cgroup (supervisor limit reporting). Not a
 # failure, but it is 16 denials a window and there is no reason to leave it asking.
 allow dsh_native_t cgroup_t:file { read };
+
+# --- r92: the session record is APPENDED to, which is its own permission ---
+#
+# With link granted (r91) the child's atomic save works and the next run is refused at open time:
+#   EACCES: open '.../session.v4.jsonl.zstd'
+#   { append } for name="session.v4.jsonl.zstd" tcontext=dsh_profile_t tclass=file
+# An append-only log is opened O_APPEND, and `write` does NOT imply `append` in SELinux (append is its own file
+# permission, checked on O_APPEND opens). r86's perms list for this type carried write but not append. This is
+# the fourth permission of the same shape: create, then link, now append - a hand-written list keeps missing the
+# one permission the code's own open flags imply.
+allow dsh_native_t dsh_profile_t:file { append };
