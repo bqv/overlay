@@ -29,4 +29,4 @@ HOME_DIR/\.dsh/sessions(/.*)?		gen_context(system_u:object_r:dsh_profile_t,s0)
 # the same label as the real one, so the same grant covers both:
 #   Xvfb :91 ...  ;  restorecon -v /tmp/.X11-unix/X91
 # Numbered 90+ deliberately: the real :0 and the existing :77/:123 are already xdm_tmp_t and must not be touched.
-/tmp/\.X11-unix/X9[0-9]		--	gen_context(system_u:object_r:xdm_tmp_t,s0)
+/tmp/\.X11-unix/X9[0-9]		-s	gen_context(system_u:object_r:xdm_tmp_t,s0)
