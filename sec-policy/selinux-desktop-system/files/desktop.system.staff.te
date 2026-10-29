@@ -1,6 +1,7 @@
 policy_module(desktop.system.staff, 1.0)
 
 gen_require(`
+  attribute xdg_config_type;
   type auditd_log_t;
   type boolean_t;
   type chkpwd_t;
