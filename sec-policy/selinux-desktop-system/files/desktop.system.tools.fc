@@ -17,3 +17,4 @@
 # almost nobody on purpose - and every open fails EACCES with nothing in the audit (device_t accesses are
 # dontaudited). The render nodes beside it get dri_device_t from /dev/dri/.+, which is why Vulkan works
 # and ROCm cannot see the card. Measured 2026-10-24.
+/dev/kfd	-c	gen_context(system_u:object_r:kfd_device_t,s0)
