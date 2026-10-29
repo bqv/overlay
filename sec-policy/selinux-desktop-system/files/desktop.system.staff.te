@@ -309,3 +309,4 @@ allow staff_git_t git_xdg_config_t:file map;
 # with scontext staff_u:staff_r:staff_t. There is no interface for a single permission on that
 # type, so it is one explicit row.
 allow staff_t java_tmp_t:file map;
+allow staff_t xdg_config_type:file { watch };
