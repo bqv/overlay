@@ -91,3 +91,4 @@ allow sysadm_t sysadm_screen_t:process { noatsecure rlimitinh siginh };
 # wireguard_t of its own instead; until then this is the grant that makes the tool work, and it is the
 # same shape the session domain already has next door in desktop.system.staff.te.
 allow sysadm_t self:netlink_generic_socket { append bind connect create getattr getopt ioctl read setattr setopt shutdown write };
+dev_create_generic_chr_files(sysadm_t)
