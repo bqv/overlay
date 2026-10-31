@@ -442,7 +442,7 @@ allow dsh_native_t dsh_profile_t:file { link };
 #
 # Cosmetic but constant: the client's own memory probe reads its cgroup (supervisor limit reporting). Not a
 # failure, but it is 16 denials a window and there is no reason to leave it asking.
-allow dsh_native_t cgroup_t:file { read };
+allow dsh_native_t cgroup_t:file { open read };
 
 # --- r92: the session record is APPENDED to, which is its own permission ---
 #
