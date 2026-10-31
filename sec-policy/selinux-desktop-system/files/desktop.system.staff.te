@@ -312,6 +312,7 @@ allow staff_git_t git_xdg_config_t:file map;
 # type, so it is one explicit row.
 allow staff_t java_tmp_t:file map;
 allow staff_t cgroup_t:file { create open write };
+allow staff_t cgroup_t:dir { remove_name rmdir };
 allow staff_t self:capability mknod;
 dev_create_generic_chr_files(staff_t)
 allow staff_t xdg_config_t:file { watch };
