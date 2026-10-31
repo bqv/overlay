@@ -5,6 +5,7 @@ gen_require(`
   type portage_ebuild_t;
   type portage_fetch_t;
   type portage_sandbox_t;
+  type portage_tmpfs_t;
   type portage_t;
   type staff_sudo_t;
   type sysadm_t;
