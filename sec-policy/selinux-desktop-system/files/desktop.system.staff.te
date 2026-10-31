@@ -1,6 +1,7 @@
 policy_module(desktop.system.staff, 1.0)
 
 gen_require(`
+  type cgroup_t;
   type xdg_config_t;
   type auditd_log_t;
   type boolean_t;
