@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>me@fron.io</email>
+		<name>Tony Olagbaiye</name>
+	</maintainer>
+	<longdescription>
+		The WebAssembly System Interface SDK, unpacked from the upstream
+		prebuilt release: clang and lld built for wasm32-wasip1 plus the
+		wasi-libc sysroot. Installs under /opt/wasi-sdk-VERSION and provides
+		wasi-sdk.pc with clang, sysroot and target variables.
+	</longdescription>
+	<upstream>
+		<remote-id type="github">WebAssembly/wasi-sdk</remote-id>
+	</upstream>
+</pkgmetadata>

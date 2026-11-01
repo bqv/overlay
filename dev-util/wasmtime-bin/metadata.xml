@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>me@fron.io</email>
+		<name>Tony Olagbaiye</name>
+	</maintainer>
+	<longdescription>
+		The Wasmtime runtime, C API and CLI, unpacked from the upstream
+		prebuilt release tarballs. Installs under /opt/wasmtime-VERSION and
+		provides wasmtime.pc, so a build can use dependency('wasmtime').
+	</longdescription>
+	<upstream>
+		<remote-id type="github">bytecodealliance/wasmtime</remote-id>
+	</upstream>
+</pkgmetadata>
