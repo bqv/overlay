@@ -104,6 +104,7 @@ allow sysadm_t kfd_device_t:chr_file map;
 kernel_dontaudit_request_load_module(ss_t)
 gen_require(`
   type certbot_lib_t;
+  type system_cronjob_t;
   type node_t;
 ')
 
