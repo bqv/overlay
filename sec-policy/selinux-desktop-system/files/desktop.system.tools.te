@@ -111,6 +111,7 @@ gen_require(`
 
 manage_dirs_pattern(system_cronjob_t, certbot_lib_t, certbot_lib_t)
 manage_files_pattern(system_cronjob_t, certbot_lib_t, certbot_lib_t)
+manage_lnk_files_pattern(system_cronjob_t, certbot_lib_t, certbot_lib_t)
 manage_dirs_pattern(system_cronjob_t, certbot_log_t, certbot_log_t)
 manage_files_pattern(system_cronjob_t, certbot_log_t, certbot_log_t)
 allow system_cronjob_t node_t:tcp_socket node_bind;
