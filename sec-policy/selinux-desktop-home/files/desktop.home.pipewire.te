@@ -191,3 +191,4 @@ allow wireplumber_t session_dbusd_runtime_t:sock_file { getattr write };
 allow pipewire_t user_runtime_t:file getattr;
 allow staff_t pipewire_t:fd use;
 allow staff_t pipewire_tmpfs_t:file { getattr read write map };
+allow pipewire_t user_runtime_t:sock_file { getattr unlink };
