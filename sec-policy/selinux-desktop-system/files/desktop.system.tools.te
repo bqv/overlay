@@ -105,6 +105,7 @@ kernel_dontaudit_request_load_module(ss_t)
 gen_require(`
   type certbot_lib_t;
   type certbot_log_t;
+  type http_port_t;
   type system_cronjob_t;
   type node_t;
 ')
@@ -115,3 +116,4 @@ manage_lnk_files_pattern(system_cronjob_t, certbot_lib_t, certbot_lib_t)
 manage_dirs_pattern(system_cronjob_t, certbot_log_t, certbot_log_t)
 manage_files_pattern(system_cronjob_t, certbot_log_t, certbot_log_t)
 allow system_cronjob_t node_t:tcp_socket node_bind;
+allow system_cronjob_t http_port_t:tcp_socket name_connect;
