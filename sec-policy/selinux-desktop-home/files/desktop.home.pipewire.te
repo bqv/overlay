@@ -1,6 +1,7 @@
 policy_module(desktop.home.pipewire, 1.0)
 
 gen_require(`
+  type pipewire_t;
   type user_runtime_t;
   type mozilla_t;
   type session_dbusd_runtime_t;
@@ -187,3 +188,4 @@ allow wireplumber_t session_dbusd_runtime_t:sock_file { getattr write };
 
 # r24: the pulse pid file under the session runtime dir
 allow pipewire_t user_runtime_t:file getattr;
+allow staff_t pipewire_t:fd use;
