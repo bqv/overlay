@@ -1,6 +1,7 @@
 policy_module(desktop.system.remote, 1.0)
 
 gen_require(`
+  type user_bin_t;
   type chkpwd_t;
   type initrc_state_t;
   type portage_tmp_t;
@@ -128,3 +129,4 @@ allow sshd_t local_packet_t:packet { send recv };
 # domains that already work through the tunnel have. If the tunnel should ever be its own packet class,
 # that is the round to plan, not this one.
 allow sshd_t dynamic_packet_t:packet { send recv };
+allow ssh_t user_bin_t:file { execute execute_no_trans };
