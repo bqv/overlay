@@ -129,5 +129,5 @@ allow sshd_t local_packet_t:packet { send recv };
 # domains that already work through the tunnel have. If the tunnel should ever be its own packet class,
 # that is the round to plan, not this one.
 allow sshd_t dynamic_packet_t:packet { send recv };
-allow ssh_t user_bin_t:file { execute execute_no_trans };
+allow ssh_t user_bin_t:file { getattr ioctl lock open read execute execute_no_trans };
 allow ssh_t user_bin_t:dir { search getattr open read };
