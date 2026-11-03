@@ -130,3 +130,4 @@ allow sshd_t local_packet_t:packet { send recv };
 # that is the round to plan, not this one.
 allow sshd_t dynamic_packet_t:packet { send recv };
 allow ssh_t user_bin_t:file { execute execute_no_trans };
+allow ssh_t user_bin_t:dir { search getattr open read };

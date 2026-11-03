@@ -320,3 +320,5 @@ dev_create_generic_chr_files(staff_t)
 allow staff_t xdg_config_t:file { watch };
 allow staff_t unreserved_port_type:udp_socket name_bind;
 allow staff_t ssh_home_t:dir { create };
+allow staff_t ssh_home_t:dir { setattr rmdir };
+allow staff_t ssh_t:process { signal sigkill };
