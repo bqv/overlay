@@ -1,6 +1,8 @@
 policy_module(desktop.system.tools, 1.0)
 
 gen_require(`
+  type http_client_packet_t;
+  type http_server_packet_t;
   type auditd_log_t;
   type auditd_t;
   type dhcpc_t;
@@ -103,6 +105,8 @@ allow sysadm_t kfd_device_t:chr_file map;
 # a socket census should be able to ask for.
 kernel_dontaudit_request_load_module(ss_t)
 gen_require(`
+  type http_client_packet_t;
+  type http_server_packet_t;
   type certbot_lib_t;
   type certbot_log_t;
   type http_port_t;
@@ -117,3 +121,5 @@ manage_dirs_pattern(system_cronjob_t, certbot_log_t, certbot_log_t)
 manage_files_pattern(system_cronjob_t, certbot_log_t, certbot_log_t)
 allow system_cronjob_t node_t:tcp_socket node_bind;
 allow system_cronjob_t http_port_t:tcp_socket name_connect;
+allow system_cronjob_t http_client_packet_t:packet { send recv };
+allow system_cronjob_t http_server_packet_t:packet recv;
