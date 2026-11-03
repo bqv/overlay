@@ -1,6 +1,7 @@
 policy_module(desktop.system.staff, 1.0)
 
 gen_require(`
+  type ssh_home_t;
   type unreserved_port_type;
   type cgroup_t;
   type xdg_config_t;
@@ -318,3 +319,4 @@ allow staff_t self:capability mknod;
 dev_create_generic_chr_files(staff_t)
 allow staff_t xdg_config_t:file { watch };
 allow staff_t unreserved_port_type:udp_socket name_bind;
+allow staff_t ssh_home_t:dir { create };
