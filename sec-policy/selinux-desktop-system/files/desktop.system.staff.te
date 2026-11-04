@@ -322,4 +322,4 @@ allow staff_t unreserved_port_type:udp_socket name_bind;
 allow staff_t ssh_home_t:dir { create };
 allow staff_t ssh_home_t:dir { setattr rmdir };
 allow staff_t ssh_t:process { signal sigkill };
-allow staff_t user_home_t:dir { mounton unmounton };
+allow staff_t user_home_t:dir { mounton };
