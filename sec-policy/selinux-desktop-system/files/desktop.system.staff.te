@@ -1,6 +1,7 @@
 policy_module(desktop.system.staff, 1.0)
 
 gen_require(`
+  type fusefs_t;
   type ssh_home_t;
   type unreserved_port_type;
   type cgroup_t;
@@ -323,3 +324,4 @@ allow staff_t ssh_home_t:dir { create };
 allow staff_t ssh_home_t:dir { setattr rmdir };
 allow staff_t ssh_t:process { signal sigkill };
 allow staff_t user_home_t:dir { mounton };
+allow staff_t fusefs_t:filesystem { mount unmount };
