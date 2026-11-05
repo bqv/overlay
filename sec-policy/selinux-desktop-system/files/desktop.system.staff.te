@@ -325,3 +325,5 @@ allow staff_t ssh_home_t:dir { setattr rmdir };
 allow staff_t ssh_t:process { signal sigkill };
 allow staff_t user_home_t:dir { mounton };
 allow staff_t fusefs_t:filesystem { mount unmount };
+manage_dirs_pattern(staff_t, fusefs_t, fusefs_t)
+manage_files_pattern(staff_t, fusefs_t, fusefs_t)
