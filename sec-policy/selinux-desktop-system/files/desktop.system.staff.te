@@ -1,6 +1,7 @@
 policy_module(desktop.system.staff, 1.0)
 
 gen_require(`
+  type xdg_cache_t;
   type nfs_t;
   type fusefs_t;
   type ssh_home_t;
@@ -329,3 +330,4 @@ allow staff_t fusefs_t:filesystem { mount unmount };
 manage_dirs_pattern(staff_t, fusefs_t, fusefs_t)
 manage_files_pattern(staff_t, fusefs_t, fusefs_t)
 allow staff_t nfs_t:file map;
+allow staff_t xdg_cache_t:file { execute execute_no_trans };
