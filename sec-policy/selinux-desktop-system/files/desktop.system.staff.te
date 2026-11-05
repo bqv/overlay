@@ -338,3 +338,5 @@ allow staff_t crond_runtime_t:file { getattr open read };
 allow crontab_t ptmx_t:chr_file { read write };
 allow crontab_t staff_t:unix_stream_socket { read write };
 allow crontab_t self:process setcap;
+manage_dirs_pattern(crontab_t, xdg_cache_t, xdg_cache_t)
+manage_files_pattern(crontab_t, xdg_cache_t, xdg_cache_t)
