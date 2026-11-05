@@ -1,6 +1,7 @@
 policy_module(desktop.system.staff, 1.0)
 
 gen_require(`
+  type nfs_t;
   type fusefs_t;
   type ssh_home_t;
   type unreserved_port_type;
@@ -327,3 +328,4 @@ allow staff_t user_home_t:dir { mounton };
 allow staff_t fusefs_t:filesystem { mount unmount };
 manage_dirs_pattern(staff_t, fusefs_t, fusefs_t)
 manage_files_pattern(staff_t, fusefs_t, fusefs_t)
+allow staff_t nfs_t:file map;
