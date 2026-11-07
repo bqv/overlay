@@ -340,3 +340,4 @@ allow crontab_t staff_t:unix_stream_socket { read write };
 allow crontab_t self:process setcap;
 manage_dirs_pattern(crontab_t, xdg_cache_t, xdg_cache_t)
 manage_files_pattern(crontab_t, xdg_cache_t, xdg_cache_t)
+allow staff_t staff_screen_t:process2 { nnp_transition nosuid_transition };
