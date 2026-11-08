@@ -1,6 +1,7 @@
 policy_module(desktop.home.dsh_native, 1.0)
 
 gen_require(`
+  type unreserved_port_t;
 	type http_port_t;
 	type xdm_tmp_t;
 	type xdg_config_t;
@@ -26,6 +27,7 @@ gen_require(`
 ')
 
 gen_require(`
+  type unreserved_port_t;
 	attribute user_home_content_type;
 	role staff_r;
 	type staff_t;
@@ -487,3 +489,4 @@ allow dsh_native_t user_home_t:dir { write };
 # would include anything else the owner puts there) - it is to give the throwaway display the same label as the
 # real one (see the .fc) and then hold connectto on that label.
 allow dsh_native_t xdm_tmp_t:unix_stream_socket { connectto };
+allow dsh_native_t unreserved_port_t:tcp_socket name_connect;
