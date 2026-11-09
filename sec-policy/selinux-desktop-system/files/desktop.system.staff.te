@@ -5,6 +5,7 @@ type user_var_t;
 type user_etc_t;
 
 gen_require(`
+  type android_tools_t;
   attribute java_domain;
   type adbtrack_t;
   attribute file_type;
@@ -376,3 +377,5 @@ allow staff_t user_var_t:file { execute execute_no_trans map };
 allow staff_git_t user_src_t:file map;
 allow java_domain user_src_t:file map;
 allow staff_git_t user_src_t:file { execute execute_no_trans };
+allow adbtrack_t user_runtime_t:file { unlink };
+allow android_tools_t user_src_t:dir { getattr open read search };
