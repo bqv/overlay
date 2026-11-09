@@ -383,3 +383,4 @@ allow android_tools_t user_src_t:file { getattr open read ioctl lock map };
 allow java_domain user_src_t:dir { watch };
 allow staff_t user_src_t:dir { watch };
 allow staff_t user_etc_t:file { execute execute_no_trans };
+allow android_tools_t user_src_t:file { create write unlink getattr open read };
