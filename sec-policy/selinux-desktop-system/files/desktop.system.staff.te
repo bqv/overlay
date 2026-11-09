@@ -390,3 +390,4 @@ typeattribute srv_data_t non_security_file_type;
 manage_dirs_pattern(staff_t, srv_data_t, srv_data_t)
 manage_files_pattern(staff_t, srv_data_t, srv_data_t)
 manage_lnk_files_pattern(staff_t, srv_data_t, srv_data_t)
+allow staff_t srv_data_t:file map;
