@@ -391,3 +391,5 @@ manage_dirs_pattern(staff_t, srv_data_t, srv_data_t)
 manage_files_pattern(staff_t, srv_data_t, srv_data_t)
 manage_lnk_files_pattern(staff_t, srv_data_t, srv_data_t)
 allow staff_t srv_data_t:file map;
+manage_fifo_files_pattern(staff_t, user_src_t, user_src_t)
+manage_sock_files_pattern(staff_t, user_src_t, user_src_t)
