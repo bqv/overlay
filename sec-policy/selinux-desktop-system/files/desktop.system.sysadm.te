@@ -1,6 +1,7 @@
 policy_module(desktop.system.sysadm, 1.0)
 
 gen_require(`
+  type user_src_t;
   type fixed_disk_device_t;
   type mount_t;
   type auditd_log_t;
@@ -96,3 +97,4 @@ allow sysadm_t self:netlink_generic_socket { append bind connect create getattr 
 dev_create_generic_chr_files(sysadm_t)
 dev_setattr_generic_chr_files(sysadm_t)
 allow mount_t unlabeled_t:filesystem { mount relabelfrom unmount };
+allow sysadm_t user_src_t:dir { relabelfrom relabelto setattr };
