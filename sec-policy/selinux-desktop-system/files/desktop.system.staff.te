@@ -379,3 +379,4 @@ allow java_domain user_src_t:file map;
 allow staff_git_t user_src_t:file { execute execute_no_trans };
 allow adbtrack_t user_runtime_t:file { unlink };
 allow android_tools_t user_src_t:dir { getattr open read search };
+allow android_tools_t user_src_t:file { getattr open read ioctl lock map };
