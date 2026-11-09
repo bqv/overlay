@@ -373,3 +373,5 @@ manage_dirs_pattern(java_domain, user_src_t, user_src_t)
 manage_files_pattern(java_domain, user_src_t, user_src_t)
 manage_lnk_files_pattern(java_domain, user_src_t, user_src_t)
 allow staff_t user_var_t:file { execute execute_no_trans map };
+allow staff_git_t user_src_t:file map;
+allow java_domain user_src_t:file map;
