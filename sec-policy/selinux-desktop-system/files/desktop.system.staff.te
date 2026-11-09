@@ -1,6 +1,12 @@
 policy_module(desktop.system.staff, 1.0)
 
+type user_src_t;
+type user_var_t;
+type user_etc_t;
+
 gen_require(`
+  attribute file_type;
+  attribute non_security_file_type;
   type crond_runtime_t;
   type crontab_t;
   type ptmx_t;
@@ -340,3 +346,18 @@ allow crontab_t staff_t:unix_stream_socket { read write };
 allow crontab_t self:process setcap;
 manage_dirs_pattern(crontab_t, xdg_cache_t, xdg_cache_t)
 manage_files_pattern(crontab_t, xdg_cache_t, xdg_cache_t)
+manage_dirs_pattern(staff_t, user_src_t, user_src_t)
+manage_files_pattern(staff_t, user_src_t, user_src_t)
+manage_lnk_files_pattern(staff_t, user_src_t, user_src_t)
+manage_dirs_pattern(staff_t, user_var_t, user_var_t)
+manage_files_pattern(staff_t, user_var_t, user_var_t)
+manage_lnk_files_pattern(staff_t, user_var_t, user_var_t)
+manage_dirs_pattern(staff_t, user_etc_t, user_etc_t)
+manage_files_pattern(staff_t, user_etc_t, user_etc_t)
+manage_lnk_files_pattern(staff_t, user_etc_t, user_etc_t)
+typeattribute user_src_t file_type;
+typeattribute user_var_t file_type;
+typeattribute user_etc_t file_type;
+typeattribute user_src_t non_security_file_type;
+typeattribute user_var_t non_security_file_type;
+typeattribute user_etc_t non_security_file_type;
