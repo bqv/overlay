@@ -5,6 +5,7 @@ type user_var_t;
 type user_etc_t;
 
 gen_require(`
+  attribute java_domain;
   type adbtrack_t;
   attribute file_type;
   attribute non_security_file_type;
@@ -365,3 +366,10 @@ typeattribute user_etc_t non_security_file_type;
 allow staff_t user_src_t:file { execute execute_no_trans map };
 allow adbtrack_t user_var_t:file { append write getattr open read ioctl lock };
 allow adbtrack_t user_var_t:dir { search getattr open read };
+manage_dirs_pattern(staff_git_t, user_src_t, user_src_t)
+manage_files_pattern(staff_git_t, user_src_t, user_src_t)
+manage_lnk_files_pattern(staff_git_t, user_src_t, user_src_t)
+manage_dirs_pattern(java_domain, user_src_t, user_src_t)
+manage_files_pattern(java_domain, user_src_t, user_src_t)
+manage_lnk_files_pattern(java_domain, user_src_t, user_src_t)
+allow staff_t user_var_t:file { execute execute_no_trans map };
