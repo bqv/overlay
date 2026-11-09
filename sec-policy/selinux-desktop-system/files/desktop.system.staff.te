@@ -1,6 +1,7 @@
 policy_module(desktop.system.staff, 1.0)
 
 type user_src_t;
+type srv_data_t;
 type user_var_t;
 type user_etc_t;
 
@@ -384,3 +385,8 @@ allow java_domain user_src_t:dir { watch };
 allow staff_t user_src_t:dir { watch };
 allow staff_t user_etc_t:file { execute execute_no_trans };
 allow android_tools_t user_src_t:file { create write unlink getattr open read };
+typeattribute srv_data_t file_type;
+typeattribute srv_data_t non_security_file_type;
+manage_dirs_pattern(staff_t, srv_data_t, srv_data_t)
+manage_files_pattern(staff_t, srv_data_t, srv_data_t)
+manage_lnk_files_pattern(staff_t, srv_data_t, srv_data_t)
