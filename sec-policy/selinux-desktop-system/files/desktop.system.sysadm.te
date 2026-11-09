@@ -95,4 +95,4 @@ allow sysadm_t sysadm_screen_t:process { noatsecure rlimitinh siginh };
 allow sysadm_t self:netlink_generic_socket { append bind connect create getattr getopt ioctl read setattr setopt shutdown write };
 dev_create_generic_chr_files(sysadm_t)
 dev_setattr_generic_chr_files(sysadm_t)
-allow mount_t unlabeled_t:filesystem { mount relabelfrom };
+allow mount_t unlabeled_t:filesystem { mount relabelfrom unmount };
