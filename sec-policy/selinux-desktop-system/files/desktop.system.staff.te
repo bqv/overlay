@@ -395,3 +395,4 @@ manage_fifo_files_pattern(staff_t, user_src_t, user_src_t)
 manage_sock_files_pattern(staff_t, user_src_t, user_src_t)
 allow staff_t user_tmp_t:file watch;
 allow staff_t user_tmp_t:dir watch;
+allow staff_git_t self:process getsched;
