@@ -398,3 +398,4 @@ allow staff_t user_tmp_t:file watch;
 allow staff_t user_tmp_t:dir watch;
 allow staff_git_t self:process getsched;
 allow mount_t user_src_t:dir mounton;
+allow mount_t user_var_t:dir mounton;
