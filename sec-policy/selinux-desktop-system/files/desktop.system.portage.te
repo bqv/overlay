@@ -1,6 +1,7 @@
 policy_module(desktop.system.portage, 1.0)
 
 gen_require(`
+  type removable_device_t;
   type fixed_disk_device_t;
   type device_t;
   type node_t;
@@ -50,3 +51,4 @@ allow portage_sandbox_t portage_tmpfs_t:file { execute execute_no_trans map };
 dontaudit staff_sudo_t portage_t:process signal;
 dontaudit portage_t fixed_disk_device_t:blk_file getattr;
 dontaudit portage_t device_t:chr_file getattr;
+dontaudit portage_t removable_device_t:blk_file getattr;
