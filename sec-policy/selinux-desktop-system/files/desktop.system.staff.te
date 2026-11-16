@@ -402,3 +402,5 @@ allow mount_t user_var_t:dir mounton;
 dontaudit staff_t user_src_t:dir relabelfrom;
 dontaudit staff_t user_src_t:file relabelfrom;
 dontaudit staff_t user_src_t:lnk_file relabelfrom;
+allow staff_sudo_t user_var_t:file { append write getattr open };
+allow staff_sudo_t user_var_t:dir { search getattr };
