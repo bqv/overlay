@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>822863+bqv@users.noreply.github.com</email>
+		<name>bqv</name>
+	</maintainer>
+	<upstream>
+		<remote-id type="github">sbnwl/pw-volume-tray</remote-id>
+	</upstream>
+</pkgmetadata>
