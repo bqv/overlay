@@ -1,6 +1,7 @@
 policy_module(desktop.system.staff, 1.0)
 
 type user_src_t;
+type nvim_plugins_t;
 type srv_data_t;
 type user_var_t;
 type user_etc_t;
@@ -361,9 +362,11 @@ manage_dirs_pattern(staff_t, user_etc_t, user_etc_t)
 manage_files_pattern(staff_t, user_etc_t, user_etc_t)
 manage_lnk_files_pattern(staff_t, user_etc_t, user_etc_t)
 typeattribute user_src_t file_type;
+typeattribute nvim_plugins_t file_type;
 typeattribute user_var_t file_type;
 typeattribute user_etc_t file_type;
 typeattribute user_src_t non_security_file_type;
+typeattribute nvim_plugins_t non_security_file_type;
 typeattribute user_var_t non_security_file_type;
 typeattribute user_etc_t non_security_file_type;
 allow staff_t user_src_t:file { execute execute_no_trans map };
@@ -410,3 +413,10 @@ allow staff_git_t xdg_data_t:dir { search getattr };
 allow staff_git_t xdg_data_t:file { getattr open read append };
 allow staff_git_t xdg_cache_t:dir { search getattr };
 allow staff_git_t xdg_cache_t:file { getattr open read write };
+manage_dirs_pattern(staff_t, nvim_plugins_t, nvim_plugins_t)
+manage_files_pattern(staff_t, nvim_plugins_t, nvim_plugins_t)
+allow staff_t nvim_plugins_t:file { execute execute_no_trans map watch };
+allow staff_t nvim_plugins_t:dir watch;
+manage_dirs_pattern(staff_git_t, nvim_plugins_t, nvim_plugins_t)
+manage_files_pattern(staff_git_t, nvim_plugins_t, nvim_plugins_t)
+allow staff_git_t nvim_plugins_t:file { map watch };

@@ -7,7 +7,7 @@ IUSE=""
 MODS="desktop.system.staff desktop.system.sysadm desktop.system.session desktop.system.nginx desktop.system.remote desktop.system.portage desktop.system.selinux desktop.system.tools desktop.system.boot desktop.system.greet desktop.system.mosh desktop.system.network desktop.system.netbird"
 BASEPOL="2.20250213-r1"
 POLICY_FILES="
-	desktop.system.staff.te
+	desktop.system.staff.te desktop.system.staff.fc
 	desktop.system.sysadm.te
 	desktop.system.session.te
 	desktop.system.nginx.te
