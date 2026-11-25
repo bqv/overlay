@@ -17,6 +17,7 @@ gen_require(`
   type crontab_t;
   type ptmx_t;
   type xdg_cache_t;
+  type lib_t;
   type nfs_t;
   type fusefs_t;
   type ssh_home_t;
@@ -422,3 +423,5 @@ manage_files_pattern(staff_git_t, nvim_plugins_t, nvim_plugins_t)
 allow staff_git_t nvim_plugins_t:file { map watch };
 allow staff_t nvim_plugins_t:lnk_file { create getattr link read rename setattr unlink write };
 allow staff_git_t nvim_plugins_t:lnk_file { create getattr link read rename setattr unlink write };
+allow staff_t lib_t:file watch;
+allow staff_t lib_t:dir watch;
