@@ -425,3 +425,5 @@ allow staff_t nvim_plugins_t:lnk_file { create getattr link read rename setattr 
 allow staff_git_t nvim_plugins_t:lnk_file { create getattr link read rename setattr unlink write };
 allow staff_t lib_t:file watch;
 allow staff_t lib_t:dir watch;
+allow staff_t xdg_config_t:dir { watch watch_reads };
+allow staff_t xdg_config_t:file { watch watch_reads };
