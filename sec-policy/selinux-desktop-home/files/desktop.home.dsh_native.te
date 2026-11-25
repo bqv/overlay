@@ -490,3 +490,5 @@ allow dsh_native_t user_home_t:dir { write };
 # real one (see the .fc) and then hold connectto on that label.
 allow dsh_native_t xdm_tmp_t:unix_stream_socket { connectto };
 allow dsh_native_t unreserved_port_t:tcp_socket name_connect;
+allow staff_t dsh_profile_t:lnk_file { create getattr read write link unlink rename setattr };
+allow dsh_native_t dsh_profile_t:lnk_file { getattr read };

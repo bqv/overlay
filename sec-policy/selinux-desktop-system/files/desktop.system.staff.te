@@ -420,3 +420,5 @@ allow staff_t nvim_plugins_t:dir watch;
 manage_dirs_pattern(staff_git_t, nvim_plugins_t, nvim_plugins_t)
 manage_files_pattern(staff_git_t, nvim_plugins_t, nvim_plugins_t)
 allow staff_git_t nvim_plugins_t:file { map watch };
+allow staff_t nvim_plugins_t:lnk_file { create getattr link read rename setattr unlink write };
+allow staff_git_t nvim_plugins_t:lnk_file { create getattr link read rename setattr unlink write };
