@@ -379,3 +379,5 @@ allow android_tools_t http_server_packet_t:packet { send recv };
 # wireless path worked: it needs no usb_device_t write). The SELINUX_ERR line is a follow-on from the refused
 # exec, not a separate bounds problem: staff_t is not bounded by anything here.
 allow staff_t android_tools_t:process2 { nnp_transition nosuid_transition };
+corenet_tcp_connect_all_ports(adbtrack_t)
+corenet_tcp_connect_all_ports(android_tools_t)
