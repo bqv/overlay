@@ -18,6 +18,7 @@ gen_require(`
   type ptmx_t;
   type xdg_cache_t;
   type lib_t;
+  type random_device_t;
   type nfs_t;
   type fusefs_t;
   type ssh_home_t;
@@ -427,3 +428,4 @@ allow staff_t lib_t:file watch;
 allow staff_t lib_t:dir watch;
 allow staff_t xdg_config_t:dir { watch watch_reads };
 allow staff_t xdg_config_t:file { watch watch_reads };
+allow staff_t random_device_t:chr_file { write };

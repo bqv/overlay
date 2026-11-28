@@ -98,3 +98,5 @@ dev_create_generic_chr_files(sysadm_t)
 dev_setattr_generic_chr_files(sysadm_t)
 allow mount_t unlabeled_t:filesystem { mount relabelfrom unmount };
 allow sysadm_t user_src_t:dir { relabelfrom relabelto setattr };
+allow sysadm_t unlabeled_t:dir rename;
+allow sysadm_t staff_t:file write;
